@@ -1,145 +1,151 @@
-# Contributing to WebSSH
+# 为 WebSSH 贡献代码
 
-Thanks for your interest in contributing! This project is open to contributions of all kinds - bug reports, feature requests, documentation improvements, and code.
+感谢你有兴趣参与贡献！本项目欢迎各种形式的贡献：缺陷报告、功能建议、文档改进与代码提交。
 
-## Quick Links
+## 快速链接
 
-- [Report a Bug](https://github.com/zhengwuji/web-ssh/issues/new?template=bug_report.md)
-- [Request a Feature](https://github.com/zhengwuji/web-ssh/issues/new?template=feature_request.md)
-- [Security Issues](SECURITY.md) - Please don't open public issues for vulnerabilities
-- [Roadmap](ROADMAP.md) and [planning workflow](docs/project-planning.md)
+- [报告缺陷](https://github.com/zhengwuji/web-ssh/issues/new?template=bug_report.md)
+- [提出功能建议](https://github.com/zhengwuji/web-ssh/issues/new?template=feature_request.md)
+- [安全问题](SECURITY.md)——请不要为漏洞提交公开 Issue
+- [路线图](ROADMAP.md) 与[规划流程](docs/project-planning.md)
 
-## Getting Started
+## 开始之前
 
-### Prerequisites
+### 环境要求
 
-- Python 3.11+
-- Docker (optional, for testing)
+- Python 3.11 或更高版本
+- Docker（可选，用于测试）
 
-### Local Development Setup
+### 本地开发环境搭建
 
 ```bash
-# Clone the repository
+# 克隆仓库
 git clone https://github.com/zhengwuji/web-ssh.git
-cd webssh
+cd web-ssh
 
-# Create virtual environment
+# 创建虚拟环境
 python -m venv venv
 source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
+# 或：venv\Scripts\activate  # Windows
 
-# Install dependencies
+# 安装依赖
 pip install -r requirements.txt
 
-# Set required environment variable
+# 设置必需的环境变量
 export SECRET_KEY=$(openssl rand -hex 32)
 export DEBUG=True
 
-# Run the application
+# 启动应用
 python start.py
 ```
 
-Open http://localhost:5000 and create a test account.
+打开 http://localhost:5000 并创建一个测试账号。
 
-### Project Structure
+### 项目结构
 
 ```
-webssh/
-├── app/                    # Flask application (15 modules)
-│   ├── __init__.py        # App factory, routes, security headers
-│   ├── auth.py            # Authentication, rate limiting
-│   ├── models.py          # SQLAlchemy models
-│   ├── socket_events.py   # WebSocket event handlers
-│   ├── ssh_manager.py     # SSH connection management
-│   ├── sftp_handler.py    # SFTP file operations
-│   ├── connection_pool.py # SSH connection pooling
-│   ├── key_manager.py     # SSH key storage
-│   ├── key_encryption.py  # SSH key encryption at rest
-│   ├── profile_manager.py # Connection profiles
-│   ├── command_manager.py # Command library
-│   ├── binary_transfer.py # Binary file transfer protocol
-│   ├── user_settings.py   # User preferences
-│   ├── audit_logger.py    # Security audit logging
-│   └── decorators.py      # Shared decorators
+web-ssh/
+├── app/                    # Flask 应用（按域划分的模块）
+│   ├── __init__.py        # 应用工厂、路由、安全响应头
+│   ├── auth.py            # 认证与限流
+│   ├── models.py          # SQLAlchemy 数据模型
+│   ├── socket_events.py   # WebSocket 事件处理器
+│   ├── ssh_manager.py     # SSH 连接管理
+│   ├── sftp_handler.py    # SFTP 文件操作
+│   ├── connection_pool.py # SSH 连接池
+│   ├── key_manager.py     # SSH 密钥存储
+│   ├── key_encryption.py  # SSH 密钥静态加密
+│   ├── profile_manager.py # 连接配置档案
+│   ├── command_manager.py # 命令库
+│   ├── binary_transfer.py # 二进制文件传输协议
+│   ├── user_settings.py   # 用户偏好设置
+│   ├── audit_logger.py    # 安全审计日志
+│   └── decorators.py      # 共享装饰器
 ├── static/
-│   ├── css/               # Stylesheets (3 files)
-│   └── js/                # Frontend JavaScript (12 modules)
-├── templates/             # Jinja2 templates (4 files)
-├── config.py              # Central configuration
-├── start.py               # Entry point
-└── requirements.txt       # Python dependencies
+│   ├── css/               # 样式表
+│   └── js/                # 前端 JavaScript 模块
+├── templates/             # Jinja2 模板
+├── config.py              # 集中式配置
+├── start.py               # 入口文件
+├── requirements.txt       # Python 依赖
+└── install.sh             # 一键安装脚本
 ```
 
-## How to Contribute
+## 如何贡献
 
-### Reporting Bugs
+### 报告缺陷
 
-Before opening an issue:
-1. Check if the issue already exists
-2. Try the latest version
-3. Collect relevant info (browser, OS, error messages, logs)
+提交 Issue 之前：
 
-Include in your bug report:
-- What you expected to happen
-- What actually happened
-- Steps to reproduce
-- Environment details (browser, OS, Docker version if applicable)
+1. 确认该问题是否已被报告
+2. 先尝试最新版本
+3. 收集相关信息（浏览器、操作系统、错误信息、日志）
 
-### Suggesting Features
+缺陷报告中请包含：
 
-Feature requests are welcome! Please include:
-- Clear description of the feature
-- Use case - why is this useful?
-- Possible implementation approach (optional)
+- 你期望发生什么
+- 实际发生了什么
+- 复现步骤
+- 环境信息（浏览器、操作系统，以及适用时的 Docker 版本）
 
-### Pull Requests
+### 提出功能建议
 
-#### Before You Start
+欢迎提出功能建议！请包含：
 
-1. **Check existing issues/PRs** - Someone might already be working on it
-2. **Open an issue first** for larger changes - Let's discuss the approach
-3. **Small PRs are better** - Easier to review and merge
+- 对该功能的清晰描述
+- 使用场景——它为什么有用？
+- 可能的实现思路（可选）
 
-For substantial work, state the user problem, expected outcome and acceptance criteria
-in the linked issue/proposal. Include the reason for the chosen approach, validation,
-compatibility/security impact and remaining rollout checks in the PR. Maintainers assign
-accepted work to a release milestone; merging does not itself publish a release.
-See the [planning and release workflow](docs/project-planning.md) for the lightweight cycle.
+### Pull Request
 
-#### Development Workflow
+#### 动手之前
 
-1. Fork the repository
-2. Create a feature branch from `main`
+1. **先查已有 Issue/PR**——可能已经有人在处理
+2. **较大的改动先开 Issue**——我们先讨论方案
+3. **小而聚焦的 PR 更好**——更容易评审与合并
+
+对于较大的改动，请在关联的 Issue 或提案中说明用户问题、预期结果与验收标准。
+在 PR 中说明所选方案的理由、验证方式、兼容性与安全影响，以及剩余的发布前检查项。
+维护者会把已接受的改动归入某个发布里程碑；合并本身并不会发布版本。
+轻量协作流程见[规划与发布流程](docs/project-planning.md)。
+
+#### 开发流程
+
+1. Fork 本仓库
+2. 从 `main` 创建功能分支
    ```bash
    git checkout -b feature/your-feature-name
    ```
-3. Make your changes
-4. Test your changes locally
-5. Commit with clear messages
-6. Push to your fork
-7. Open a Pull Request
+3. 修改代码
+4. 在本地测试你的改动
+5. 使用清晰的提交信息提交
+6. 推送到你的 Fork
+7. 发起 Pull Request
 
-#### Code Style
+#### 代码风格
 
-**Python:**
-- Follow PEP 8
-- Use meaningful variable names
-- Keep functions focused and small
-- Lean code: no unnecessary comments, docstrings only where logic is non-obvious
+**Python：**
 
-**JavaScript:**
-- Vanilla JS only (no frameworks - intentional architecture decision)
-- Use consistent indentation (4 spaces)
-- Prefer `const` over `let`, avoid `var`
+- 遵循 PEP 8
+- 使用有意义的变量名
+- 函数保持聚焦且简短
+- 精简代码：不写多余注释，只在逻辑不直观处写文档字符串
 
-**General:**
-- No trailing whitespace
-- Files end with a newline
-- Keep lines under 100 characters when reasonable
+**JavaScript：**
 
-#### Commit Messages
+- 只使用原生 JavaScript（不使用框架——这是有意的架构决定）
+- 统一缩进（4 个空格）
+- 优先使用 `const` 而非 `let`，避免 `var`
 
-Write clear commit messages:
+**通用：**
+
+- 不要有行尾空格
+- 文件以换行符结尾
+- 尽量把单行控制在 100 字符以内
+
+#### 提交信息
+
+请写出清晰的提交信息：
 
 ```
 Add SFTP directory creation support
@@ -151,88 +157,88 @@ Add SFTP directory creation support
 Fixes #42
 ```
 
-Format:
-- First line: Brief summary (imperative mood, max 50 chars)
-- Blank line
-- Body: Explain what and why (wrap at 72 chars)
-- Reference issues if applicable
+格式：
 
-#### Security Considerations
+- 第一行：简要说明（祈使语气，不超过 50 字符）
+- 空行
+- 正文：解释改了什么以及为什么（每行不超过 72 字符）
+- 如适用，引用对应 Issue
 
-This project handles SSH credentials. When contributing, please:
+#### 安全注意事项
 
-- Never log passwords or private keys
-- Validate and sanitize all user input
-- Check session ownership before operations
-- Use parameterized queries (SQLAlchemy handles this)
-- Clear sensitive data from memory when done
-- Consider path traversal in file operations
+本项目会处理 SSH 凭据。贡献代码时请：
 
-If your change touches authentication, encryption, or session handling, please note this in your PR for extra review attention.
+- 绝不记录密码或私钥
+- 校验并清洗所有用户输入
+- 操作前检查会话归属
+- 使用参数化查询（SQLAlchemy 已处理）
+- 用完即从内存中清除敏感数据
+- 文件操作时考虑路径穿越
 
-#### Public Repository Hygiene
+如果你的改动涉及认证、加密或会话处理，请在 PR 中注明，以便额外评审。
 
-Everything committed here is published. Do not commit local development
-instructions, tool configuration, private notes, development captures,
-temporary test output, workstation paths, credentials, or unreferenced media.
-Keep reusable product and operator documentation in the public documentation areas.
+#### 公开仓库卫生
 
-Run the same repository guard used by CI before submitting:
+提交到这里的内容都会被公开。请不要提交本地开发说明、工具配置、私人笔记、
+开发过程截图、临时测试输出、工作站路径、凭据或未被引用的媒体文件。
+可复用的产品与运维文档请放在公开文档区域。
+
+提交前请运行与 CI 相同的仓库守卫：
 
 ```bash
 python scripts/check_repository_hygiene.py
 ```
 
-The guard inspects tracked files directly, so force-adding an ignored file does
-not bypass it. Changes that add a forbidden path, an internal-instruction marker,
-a workstation-specific tool path, or an unreferenced file under `assets/` fail
-the required `dispatch-integrity` check.
+该守卫直接检查已跟踪文件，因此强制添加被忽略的文件也无法绕过。
+新增被禁止的路径、内部指令标记、工作站专用工具路径，或 `assets/` 下未被引用的文件，
+都会导致必需的 `dispatch-integrity` 检查失败。
 
-#### Testing Your Changes
+#### 测试你的改动
 
-Before submitting:
+提交之前：
 
-1. **Manual testing** - Verify your changes work as expected
-2. **Test edge cases** - Empty inputs, special characters, large files
-3. **Check different browsers** - Chrome, Firefox, Safari at minimum
-4. **Test with Docker** - Ensure containerized deployment works
+1. **手工测试**——确认改动按预期工作
+2. **测试边界情况**——空输入、特殊字符、大文件
+3. **检查不同浏览器**——至少覆盖 Chrome、Firefox、Safari
+4. **用 Docker 测试**——确保容器化部署可用
    ```bash
    docker build -t webssh:test .
    docker run -p 5000:5000 -e SECRET_KEY=$(openssl rand -hex 32) -e CORS_ORIGINS=http://localhost:5000 webssh:test
    ```
 
-### Documentation
+### 文档
 
-Documentation improvements are always welcome:
-- Fix typos or unclear explanations
-- Add examples
-- Improve README
-- Add inline code comments
+文档改进永远欢迎：
 
-## What's Needed
+- 修正笔误或表述不清之处
+- 补充示例
+- 改进 README
+- 增加代码内的行内注释
 
-Areas where contributions are especially welcome:
+## 目前最需要什么
 
-- [ ] Automated tests (pytest, playwright)
-- [ ] Internationalization (new language translations)
-- [ ] Accessibility improvements
-- [ ] Performance optimizations
-- [ ] Additional themes
-- [ ] Documentation
+以下方向尤其欢迎贡献：
 
-## Code of Conduct
+- [ ] 自动化测试（pytest、Playwright）
+- [ ] 国际化（新增语言翻译）
+- [ ] 无障碍改进
+- [ ] 性能优化
+- [ ] 更多主题
+- [ ] 文档
 
-Be respectful and constructive. We're all here to build something useful.
+## 行为准则
 
-- Be welcoming to newcomers
-- Accept constructive criticism gracefully
-- Focus on what's best for the project
-- Show empathy towards others
+请保持尊重与建设性。我们都在为做出有用的东西而努力。
 
-## Questions?
+- 对新人友好
+- 坦然接受建设性批评
+- 以项目整体利益为先
+- 对他人保持同理心
 
-Reach out through the repository issue tracker at https://github.com/zhengwuji/web-ssh/issues
+## 有问题？
 
-## License
+请通过仓库的 Issue 跟踪器联系我们：https://github.com/zhengwuji/web-ssh/issues
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+## 许可证
+
+参与贡献即表示你同意以 MIT 许可证授权你的贡献。

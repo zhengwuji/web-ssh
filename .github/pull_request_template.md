@@ -1,25 +1,24 @@
-## Problem and outcome
+## 问题与结果
 
-What user problem, security risk or operational gap does this address? Why this approach?
+本次改动解决了什么用户问题、安全风险或运维缺口？为什么采用这个方案？
 
-## Scope and links
+## 范围与链接
 
-Related issue/proposal:
-Target milestone (if accepted into a release):
+关联的 Issue/提案：
+目标里程碑（若已纳入某个发布）：
 
-Use `Fixes #...` for completed work or `Refs #...` for partial work. Small fixes and
-dependency updates do not need a duplicate planning issue.
+已完成的改动请写 `Fixes #...`，部分完成的写 `Refs #...`。小修复与依赖更新无需额外开规划 Issue。
 
-## Validation
+## 验证
 
-- Exact tested revision and checks/results:
-- Regression/acceptance coverage:
-- Compatibility, upgrade and security impact:
-- Remaining deployment-specific checks or explicit limitations:
+- 实际测试的修订版本与检查项/结果：
+- 回归/验收覆盖：
+- 兼容性、升级与安全影响：
+- 剩余的部署专项检查或显式限制：
 
-## Delivery
+## 交付
 
-Merging implements the change; it does not publish a versioned release. Link the
-release-readiness issue when relevant. Record deferred work and the reason there.
+合并即实现该改动，但不会发布带版本号的发行版。相关时请链接发布就绪 Issue，
+并在那里记录延后事项及其原因。
 
-See [the planning workflow](https://github.com/zhengwuji/web-ssh/blob/main/docs/project-planning.md).
+参见[规划流程](https://github.com/zhengwuji/web-ssh/blob/main/docs/project-planning.md)。

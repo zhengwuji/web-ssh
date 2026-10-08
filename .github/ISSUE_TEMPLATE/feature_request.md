@@ -1,27 +1,27 @@
 ---
-name: Feature request
-about: Suggest an idea for this project
+name: 功能建议
+about: 为本项目提出想法
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+**你的功能建议是否与某个问题相关？请描述。**
+清晰简要地说明该问题是什么。例如：每当 […] 我就很困扰。
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+**描述你期望的解决方案**
+清晰简要地说明你希望发生什么。
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**描述你考虑过的替代方案**
+清晰简要地说明你考虑过的其他解决方案或功能。
 
-**Expected outcome and acceptance**
-How would a user or maintainer verify that this solves the problem?
+**期望结果与验收方式**
+用户或维护者如何验证这确实解决了问题？
 
-**Constraints and scope**
-Note deployment, compatibility or security constraints, and anything deliberately out of scope.
-Release scope and milestone assignment are maintainer decisions, not commitments made by this request.
+**约束与范围**
+请说明部署、兼容性或安全方面的约束，以及任何有意排除在范围之外的内容。
+发布范围与里程碑分配由维护者决定，不构成本请求所做的承诺。
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+**补充信息**
+在此补充关于该功能建议的其他背景信息或截图。

@@ -247,18 +247,37 @@ def test_readme_is_a_compact_project_entry_point():
 
 
 def test_readme_has_the_approved_information_architecture():
-    """The README routes readers through product, setup, safety, and docs."""
+    """The README routes readers through product, setup, safety, and docs.
+
+    The GitHub landing page is written in Chinese, so the section headings are
+    asserted in Chinese as well.
+    """
     readme = README.read_text(encoding="utf-8")
     for heading in (
-        "## Why WebSSH",
-        "## Features",
-        "## Screenshots",
-        "## Quick Start",
-        "## Security Boundary",
-        "## Documentation",
-        "## Contributing and Support",
+        "## 为什么选择 WebSSH",
+        "## 功能",
+        "## 界面截图",
+        "## 快速开始",
+        "## 安全边界",
+        "## 文档",
+        "## 贡献与支持",
     ):
         assert heading in readme
+
+
+def test_readme_has_no_english_section_headings():
+    """Every section heading stays in Chinese on the published landing page."""
+    readme = README.read_text(encoding="utf-8")
+    headings = [
+        line.strip().removeprefix("## ").strip()
+        for line in readme.splitlines()
+        if line.startswith("## ")
+    ]
+    assert headings
+    for heading in headings:
+        # The product name itself is Latin and stays as-is.
+        title = heading.replace("WebSSH", "").replace("SSH", "").replace("SFTP", "")
+        assert not any("a" <= char.lower() <= "z" for char in title), heading
 
 
 def test_readme_uses_the_new_product_media():
@@ -286,8 +305,8 @@ def test_readme_routes_long_form_runbooks_to_the_published_wiki():
     ):
         assert removed_heading not in readme
     live_wiki = "https://github.com/zhengwuji/web-ssh/wiki"
-    assert f"[WebSSH Wiki]({live_wiki})" in readme
-    assert "[versioned source](docs/wiki/Home.md)" in readme
+    assert f"[WebSSH 文档站]({live_wiki})" in readme
+    assert "[版本化源文档](docs/wiki/Home.md)" in readme
     for guide in (
         "Quick-Start.md",
         "Production-Deployment.md",
@@ -576,14 +595,10 @@ def test_public_surfaces_use_the_large_real_session_workspace_capture():
 def test_readme_keeps_current_session_diagnostics_public():
     """Monitoring, diagnostics, and safe service actions stay discoverable."""
     readme = README.read_text(encoding="utf-8")
-    for feature in (
-        "Active Session Monitoring",
-        "Expanded Diagnostics",
-        "Clipboard-Only Service Actions",
-    ):
+    for feature in ("活动会话监控", "扩展诊断", "仅复制服务操作"):
         assert feature in readme
 
-    assert "Session-aware Files, Commands, Diagnostics, and Notes contexts" in readme
+    assert "随会话联动的文件、命令、诊断与笔记上下文" in readme
 
 
 def test_docker_exec_cli_examples_load_the_persisted_secret():
