@@ -1,11 +1,11 @@
-# Docker and Docker Compose
+# Docker 与 Docker Compose
 
-The official image is published at `ghcr.io/zhengwuji/web-ssh`. The container
-runs as a non-root user and starts Gunicorn with one `gthread` worker.
+官方镜像发布在 `ghcr.io/zhengwuji/web-ssh`。该容器
+以非 root 用户运行，并使用一个 `gthread` worker 启动 Gunicorn。
 
-## Persistent volume
+## 持久化数据卷
 
-Mount `/app/data` persistently:
+持久挂载 `/app/data`：
 
 ```yaml
 services:
@@ -18,25 +18,25 @@ volumes:
   webssh_data:
 ```
 
-Without this volume, users, profiles, keys, host trust, settings, backups, and
-the auto-generated application secret disappear with the container.
+如果没有这个数据卷，用户、配置文件、密钥、主机信任、设置、备份以及
+自动生成的应用密钥都会随容器一起消失。
 
-The repository Compose file also mounts `webssh_recovery` at `/app/recovery`.
-This separate durable volume stores online-restore rollback state and must not
-be nested below or shared with `/app/data`.
+仓库的 Compose 文件还会在 `/app/recovery` 挂载 `webssh_recovery`。
+这个独立的持久化数据卷用于存放在线恢复的回滚状态，绝不能
+嵌套在 `/app/data` 之下，也不能与其共享。
 
-## Base homelab deployment
+## 基础家庭实验室部署
 
 ```bash
 curl -O https://raw.githubusercontent.com/zhengwuji/web-ssh/main/docker-compose.yml
 docker compose up -d
 ```
 
-The base file publishes `5000:5000`, sets `DEPLOYMENT_PROFILE=homelab`, allows
-wildcard CORS, uses HTTP-compatible cookies, enables tmux integration, and
-persists `/app/data`.
+基础文件发布 `5000:5000`，设置 `DEPLOYMENT_PROFILE=homelab`，允许
+通配 CORS，使用与 HTTP 兼容的 Cookie，启用 tmux 集成，并
+持久化 `/app/data`。
 
-Edit the Compose file to use a specific origin whenever possible:
+尽可能修改 Compose 文件以使用某个具体的源：
 
 ```yaml
 environment:
@@ -44,43 +44,43 @@ environment:
   - ALLOW_CORS_WILDCARD=false
 ```
 
-## Application secret
+## 应用密钥
 
-When `SECRET_KEY` is not supplied, the container entrypoint creates a strong
-secret and persists it at `DATA_DIR/secret_key`. This makes ordinary container
-recreation safe as long as the data volume is preserved.
+当未提供 `SECRET_KEY` 时，容器入口点会创建一个强
+密钥并将其持久化到 `DATA_DIR/secret_key`。只要数据卷
+得以保留，这让普通的容器重建变得安全。
 
-If the container `DATA_DIR` is overridden, it must be absolute and that exact
-directory must be mounted persistently. Logs, keys, and `secret_key` all move
-together. If a legacy `/app/data/secret_key` exists, copy it to the new
-`DATA_DIR` with mode `0600` before starting; startup refuses to silently create
-a second encryption root. An explicitly supplied external `SECRET_KEY` still
-takes precedence and is not copied into the data directory.
+如果覆盖了容器的 `DATA_DIR`，它必须是绝对路径，并且那个确切的
+目录必须被持久挂载。日志、密钥和 `secret_key` 都会一起移动。
+如果存在遗留的 `/app/data/secret_key`，请在启动前以 `0600` 权限把它复制到新的
+`DATA_DIR`；启动过程会拒绝静默创建
+第二个加密根。显式提供的外部 `SECRET_KEY` 仍
+优先，并且不会被复制到数据目录中。
 
-Provide an external secret only when the deployment has a deliberate secret
-management policy. A changed or lost `SECRET_KEY` invalidates browser sessions
-and prevents decryption of stored SSH keys.
+仅当部署具有刻意的密钥管理策略时才提供外部密钥。
+`SECRET_KEY` 发生变化或丢失会使浏览器会话失效，
+并导致无法解密已存储的 SSH 密钥。
 
-## Lifecycle and stop grace
+## 生命周期与停止宽限期
 
-The base service uses `stop_grace_period: 40s`. WebSSH accepts an application
-shutdown grace of 1 to 30 seconds and defaults to 5. During shutdown it stops
-accepting new work, signals runtime jobs, and waits only for the bounded grace.
+基础服务使用 `stop_grace_period: 40s`。WebSSH 接受 1 到 30 秒的
+应用关闭宽限期，默认值为 5。在关闭期间，它会停止
+接受新工作、通知运行时任务，并且只等待有界的宽限期。
 
-Keep Docker's stop grace longer than `RUNTIME_SHUTDOWN_GRACE_SECONDS` so the
-application can cancel readers and transfers before Docker sends a forced kill.
+请让 Docker 的停止宽限期长于 `RUNTIME_SHUTDOWN_GRACE_SECONDS`，这样
+应用就能在 Docker 发出强制终止之前取消读取器和传输。
 
-## Healthcheck
+## 健康检查
 
-The image and Compose file probe `/ready` from inside the container. The default
-healthcheck waits for:
+镜像和 Compose 文件会从容器内部探测 `/ready`。默认的
+健康检查会等待：
 
-- the application runtime to accept work;
-- maintenance mode to be inactive;
-- a successful SQLite query;
-- a create/write/fsync/delete probe in `DATA_DIR`.
+- 应用运行时能够接受工作；
+- 维护模式处于非激活状态；
+- 一次成功的 SQLite 查询；
+- 在 `DATA_DIR` 中完成创建/写入/fsync/删除探测。
 
-Inspect state with:
+用以下命令检查状态：
 
 ```bash
 docker compose ps
@@ -88,9 +88,9 @@ docker inspect --format '{{json .State.Health}}' webssh
 docker compose logs --tail=200 webssh
 ```
 
-## Updating the image
+## 更新镜像
 
-Before updating, create and download a verified backup. Then:
+在更新之前，先创建并下载一份经过验证的备份。然后：
 
 ```bash
 docker compose pull webssh
@@ -99,14 +99,13 @@ docker compose ps
 curl -fsS http://localhost:5000/ready
 ```
 
-If an earlier image already created the `webssh_recovery` volume with a
-root-owned `/app/recovery` and startup now reports `Permission denied`, stop the
-service before repairing it. An empty recovery volume may be removed and
-recreated by Compose. Never remove a non-empty recovery volume during or after
-an interrupted restore; preserve its contents and have an administrator change
-the volume root to the image's `appuser` UID/GID with mode `0700` instead.
+如果较早的镜像已经创建了 `webssh_recovery` 数据卷，其中 `/app/recovery` 归
+root 所有，而启动现在报告 `Permission denied`，请先停止
+服务再修复它。空的数据卷可以被 Compose 移除并
+重新创建。在一次中断的恢复期间或之后，绝不要移除非空的恢复数据卷；
+请保留其内容，并由管理员把该数据卷的根目录改为镜像中 `appuser` 的 UID/GID 和 `0700` 权限。
 
-Record the currently deployed immutable image digest before replacing it:
+在替换之前记录当前部署的不可变镜像摘要：
 
 ```bash
 docker image inspect \
@@ -114,30 +113,30 @@ docker image inspect \
   --format '{{index .RepoDigests 0}}'
 ```
 
-Use an immutable version tag or digest for controlled production rollouts.
+对于受控的生产发布，请使用不可变的版本标签或摘要。
 
-## Optional Redis rate-limit storage
+## 可选的 Redis 限流存储
 
-The default `memory://` backend resets rate counters when the process restarts.
-To keep counters while Redis remains available, enable the private Redis service
-from the supplied Compose comments and set:
+默认的 `memory://` 后端会在进程重启时重置限流计数器。
+若要在 Redis 可用期间保留计数器，请从随附的 Compose 注释中
+启用私有的 Redis 服务并设置：
 
 ```yaml
 environment:
   - RATELIMIT_STORAGE_URL=redis://redis:6379/0
 ```
 
-Do not publish the Redis port. If Redis becomes unavailable, WebSSH uses an
-in-memory fallback and periodically retries the external backend.
+不要对外发布 Redis 端口。如果 Redis 变得不可用，WebSSH 会使用
+内存回退，并定期重试外部后端。
 
-Redis does not make multiple WebSSH workers safe. Live SSH transports and other
-coordination remain process-local.
+Redis 并不会让多个 WebSSH worker 变得安全。活跃的 SSH 传输和其他
+协调工作仍保留在进程本地。
 
-## Optional overlays
+## 可选覆盖文件
 
-Compose files are applied from left to right. Later overlays win.
+Compose 文件从左到右应用。靠后的覆盖文件优先。
 
-Production:
+生产：
 
 ```bash
 export WEBSSH_ORIGIN=https://ssh.example.com
@@ -147,7 +146,7 @@ docker compose \
   up -d
 ```
 
-LDAP plus production:
+LDAP 加生产：
 
 ```bash
 export WEBSSH_ORIGIN=https://ssh.example.com
@@ -158,17 +157,17 @@ docker compose \
   up -d
 ```
 
-Always use base and overlay files from the same release or commit. The LDAP
-overlay adds a read-only secret mount to WebSSH and a separate helper profile;
-the production overlay follows it so its security settings are authoritative.
-Optionally append `-f docker-compose.hardened.yml` after production to enable
-additional container restrictions. Check custom writable paths, runtime UID/GID
-and resource budgets before opting in; see
-[container boundaries](https://github.com/zhengwuji/web-ssh/blob/main/docs/production-container.md).
+请始终使用来自同一发布版本或提交的基础文件和覆盖文件。LDAP
+覆盖文件会为 WebSSH 添加一个只读密钥挂载以及一个独立的辅助配置文件；
+生产覆盖文件排在其后，因此其安全设置具有权威性。
+可选择在生产覆盖文件之后追加 `-f docker-compose.hardened.yml`，以启用
+额外的容器限制。在选择启用之前，请检查自定义可写路径、运行时 UID/GID
+和资源预算；参见
+[容器边界](https://github.com/zhengwuji/web-ssh/blob/main/docs/production-container.md)。
 
-## Inspect the effective configuration
+## 检查生效的配置
 
-Before changing a running deployment:
+在更改正在运行的部署之前：
 
 ```bash
 docker compose \
@@ -177,18 +176,18 @@ docker compose \
   config
 ```
 
-For LDAP, include `docker-compose.ldap.yml` in the same order used for startup.
-Review published ports, environment values, mounts, and the selected image.
+对于 LDAP，请按启动时所用的相同顺序包含 `docker-compose.ldap.yml`。
+复核对外发布的端口、环境变量值、挂载以及所选镜像。
 
-## Backup boundary
+## 备份边界
 
-The `webssh_data` volume is covered by the native backup format. The separate
-LDAP bind-password and CA volume is intentionally not included. Treat both as
-secrets and document how each is restored.
+`webssh_data` 数据卷被原生备份格式所覆盖。独立的
+LDAP 绑定密码与 CA 数据卷则有意不包含在内。请把两者都视为
+机密，并记录各自如何恢复。
 
-## Related pages
+## 相关页面
 
-- [Production Deployment](Production-Deployment)
-- [LDAP and Active Directory](LDAP-and-Active-Directory)
-- [Backup, Restore and Secret Rotation](Backup-Restore-and-Secret-Rotation)
-- [Upgrading, Rollback and FAQ](Upgrading-Rollback-and-FAQ)
+- [生产部署](Production-Deployment)
+- [LDAP 与 Active Directory](LDAP-and-Active-Directory)
+- [备份、恢复与密钥轮换](Backup-Restore-and-Secret-Rotation)
+- [升级、回滚与常见问题](Upgrading-Rollback-and-FAQ)

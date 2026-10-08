@@ -1,40 +1,40 @@
 **WebSSH Wiki**
 
-- [Home](Home)
-- [Quick Start](Quick-Start)
+- [主页](Home)
+- [快速开始](Quick-Start)
 
-**Install and operate**
+**安装与运维**
 
-- [Installation from Source](Installation-from-Source)
-- [Docker and Docker Compose](Docker-and-Docker-Compose)
-- [Production Deployment](Production-Deployment)
-- [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment)
-- [Upgrading, Rollback, and FAQ](Upgrading-Rollback-and-FAQ)
+- [从源码安装](Installation-from-Source)
+- [Docker 与 Docker Compose](Docker-and-Docker-Compose)
+- [生产部署](Production-Deployment)
+- [反向代理与子目录部署](Reverse-Proxy-and-Subfolder-Deployment)
+- [升级、回滚与常见问题](Upgrading-Rollback-and-FAQ)
 
-**Identity and access**
+**身份与访问**
 
-- [Users and Account Management](Users-and-Account-Management)
-- [Authentication Overview](Authentication-Overview)
-- [GitHub Authentication](GitHub-Authentication)
-- [LDAP and Active Directory](LDAP-and-Active-Directory)
+- [用户与账户管理](Users-and-Account-Management)
+- [身份验证概览](Authentication-Overview)
+- [GitHub 身份验证](GitHub-Authentication)
+- [LDAP 与 Active Directory](LDAP-and-Active-Directory)
 - [OpenID Connect](OpenID-Connect)
-- [Passkeys and Recovery Codes](Passkeys-and-Recovery-Codes)
+- [Passkey 与恢复码](Passkeys-and-Recovery-Codes)
 
-**SSH and files**
+**SSH 与文件**
 
-- [SSH Connections and Host Keys](SSH-Connections-and-Host-Keys)
-- [Profiles, Jump Hosts, and Commands](Profiles-Jump-Hosts-and-Commands)
-- [Terminal and Persistent tmux Sessions](Terminal-and-Persistent-tmux-Sessions)
-- [SFTP File Workspace and Transfers](SFTP-File-Workspace-and-Transfers)
+- [SSH 连接与主机密钥](SSH-Connections-and-Host-Keys)
+- [配置文件、跳板主机与命令](Profiles-Jump-Hosts-and-Commands)
+- [终端与持久化 tmux 会话](Terminal-and-Persistent-tmux-Sessions)
+- [SFTP 文件工作空间与传输](SFTP-File-Workspace-and-Transfers)
 - [Tailscale SSH](Tailscale-SSH)
 
-**Reference and administration**
+**参考与管理**
 
-- [Configuration Reference](Configuration-Reference)
-- [Administration, Audit, and Diagnostics](Administration-Audit-and-Diagnostics)
-- [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation)
-- [Security Model and Hardening](Security-Model-and-Hardening)
-- [Data Storage and Persistence](Data-Storage-and-Persistence)
-- [Architecture and Runtime Lifecycle](Architecture-and-Runtime-Lifecycle)
-- [Health Checks and Troubleshooting](Health-Checks-and-Troubleshooting)
-- [Development and Testing](Development-and-Testing)
+- [配置参考](Configuration-Reference)
+- [管理、审计与诊断](Administration-Audit-and-Diagnostics)
+- [备份、恢复与密钥轮换](Backup-Restore-and-Secret-Rotation)
+- [安全模型与加固](Security-Model-and-Hardening)
+- [数据存储与持久化](Data-Storage-and-Persistence)
+- [架构与运行时生命周期](Architecture-and-Runtime-Lifecycle)
+- [健康检查与故障排查](Health-Checks-and-Troubleshooting)
+- [开发与测试](Development-and-Testing)

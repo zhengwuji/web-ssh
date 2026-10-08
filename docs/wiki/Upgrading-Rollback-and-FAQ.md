@@ -1,19 +1,19 @@
-# Upgrading, Rollback and FAQ
+# 升级、回滚与常见问题
 
-Treat an upgrade as an application-image change against persistent state. Keep
-the data volume intact unless a verified restore is explicitly required.
+请把升级视为针对持久化状态的应用程序镜像变更。除非明确要求经过验证的恢复，
+否则请保持数据卷完好无损。
 
-## Before upgrading
+## 升级之前
 
-1. Read the release notes.
-2. Create a native backup and download it to encrypted off-host storage.
-3. Verify the archive.
-4. Record the deployed image digest.
-5. Keep the previous immutable image available.
-6. Confirm free disk space and the container restart policy.
-7. Record any Compose overlays and external secret files.
+1. 阅读发行说明。
+2. 创建原生备份，并将其下载到加密的异地存储。
+3. 校验归档文件。
+4. 记录已部署的镜像摘要（digest）。
+5. 保持上一个不可变镜像可用。
+6. 确认空闲磁盘空间和容器重启策略。
+7. 记录所有 Compose 叠加文件与外部密钥文件。
 
-## Compose upgrade
+## Compose 升级
 
 ```bash
 docker compose pull webssh
@@ -22,8 +22,8 @@ docker compose ps
 docker compose logs --tail=200 webssh
 ```
 
-With production and LDAP overlays, use the same ordered file list for pull,
-config inspection, and startup:
+使用生产与 LDAP 叠加文件时，请对拉取、配置检查与启动采用相同的
+有序文件列表：
 
 ```bash
 docker compose \
@@ -45,131 +45,129 @@ docker compose \
   up -d
 ```
 
-Use all Compose files from the same release or commit. The production overlay
-preserves established resource limits, temporary mounts and custom runtime paths.
-Additional restrictions are explicit in `docker-compose.hardened.yml`; append it
-to every command only when that deployment has been configured and tested for it.
-If already using the restrictions introduced with PR #223, include the new
-hardened overlay to retain them when updating Compose files. Otherwise updating
-the production file removes those previously implicit limits on recreation.
-Existing image-only upgrades do not change container settings. Review the merged
-configuration before recreating containers; keep data and recovery volumes intact.
+请使用来自同一发行版或同一提交的所有 Compose 文件。生产叠加文件
+会保留既有的资源限制、临时挂载和自定义运行时路径。
+其他限制在 `docker-compose.hardened.yml` 中显式声明；仅当该部署已完成
+相应配置与测试后，才将其追加到每条命令。如果已经在使用 PR #223 引入的限制，
+请一并包含新的加固叠加文件，以便在更新 Compose 文件时保留这些限制。否则更新
+生产文件会在重建容器时移除此前隐含的限制。
+仅更换镜像的升级不会改变容器设置。在重建容器之前请审阅合并后的
+配置；保持数据卷与恢复卷完好。
 
-## Post-upgrade verification
+## 升级后验证
 
-- `/health` returns 200.
-- `/ready` returns 200.
-- Administrator and standard-user login work.
-- Existing stored-key metadata is readable.
-- A direct SSH terminal opens.
-- Host-key trust behaves as expected.
-- SFTP listing and a small transfer work.
-- Optional identity providers work.
-- Logs show no migration, maintenance, or permission error.
+- `/health` 返回 200。
+- `/ready` 返回 200。
+- 管理员和标准用户登录可用。
+- 既有的存储密钥元数据可读取。
+- 可以直接打开 SSH 终端。
+- 主机密钥信任行为符合预期。
+- SFTP 列表与小文件传输可用。
+- 可选的身份提供方可用。
+- 日志中没有迁移、维护或权限错误。
 
-Browser tabs opened before an upgrade may still run an incompatible Socket.IO
-client. WebSSH rejects the mismatch before restoring or registering runtime
-sessions. Clients that support the wire-revision check reload once and then
-show a persistent manual reload action instead of retrying in a loop. A tab
-from an older release cannot interpret the structured refusal and may show
-only that it was disconnected; reload that tab manually. Clear an intervening
-proxy or browser cache if a current tab still reports a mismatch.
+升级前打开的浏览器标签页可能仍在运行不兼容的 Socket.IO
+客户端。WebSSH 会在恢复或注册运行时会话之前拒绝这种不匹配。支持
+线路版本（wire-revision）检查的客户端会重新加载一次，随后
+显示一个持久的手动重新加载操作，而不是循环重试。来自旧发行版的标签页
+无法解析结构化拒绝信息，可能只会显示连接已断开；请手动重新加载
+该标签页。如果当前标签页仍报告不匹配，请清除中间的
+代理缓存或浏览器缓存。
 
-## Image-only rollback
+## 仅镜像回滚
 
-If the new runtime fails but persistent data is intact, stop the candidate and
-start the previously recorded immutable image against the same `/app/data`
-volume. Do not restore or rewrite data merely to roll back the image.
+如果新运行时失败但持久化数据完好，请停止候选版本，并
+针对同一个 `/app/data` 卷启动先前记录的不可变镜像。不要仅仅为了回滚镜像
+而恢复或重写数据。
 
-After rollback, verify readiness, login, stored keys, terminal access, and SFTP.
-Tabs from a wire-revision-aware newer image detect that the older server omits
-or reports a different revision and reload once to fetch that server's bundle.
-Reload manually if a tab remains disconnected after the rollback.
-If the newer application migrated data beyond the older version's supported
-schema, image-only rollback may be blocked; consult release notes and the native
-backup compatibility result before forcing any change.
+回滚之后，请验证就绪状态、登录、存储的密钥、终端访问和 SFTP。
+来自支持线路版本感知的较新镜像的标签页会检测到旧服务器省略或
+报告了不同的版本号，并重新加载一次以获取该服务器端的捆绑包。
+如果回滚后标签页仍处于断开状态，请手动重新加载。
+如果较新的应用程序已将数据迁移到超出旧版本所支持
+的模式（schema），仅镜像回滚可能会被阻止；在强制进行任何变更之前，
+请查阅发行说明和原生备份兼容性结果。
 
-## Restore rollback
+## 恢复式回滚
 
-Use restore only when persistent state is damaged or an intentional state
-rollback is required. Restore is destructive and invalidates all browser
-sessions. Prefer a backup produced by the same or an older compatible schema.
-Backups from a newer schema are rejected by an older WebSSH release.
+仅在持久化状态已损坏或确实需要有意进行状态回滚时，才使用恢复操作。
+恢复是破坏性的，并会使所有浏览器会话失效。请优先使用由相同或
+更旧的兼容模式生成的备份。来自较新模式（schema）的备份会被较旧的 WebSSH
+发行版拒绝。
 
-See [Backup, Restore and Secret Rotation](Backup-Restore-and-Secret-Rotation).
+参见 [备份、恢复与密钥轮换](Backup-Restore-and-Secret-Rotation)。
 
-## Frequently asked questions
+## 常见问题
 
-### Can I run multiple Gunicorn workers or replicas?
+### 我可以运行多个 Gunicorn worker 或副本吗？
 
-No. Live SSH transports, Socket.IO coordination, and quota state are
-process-local. Use exactly one `gthread` worker. Increase threads only within
-the documented bounds and preserve at least four HTTP threads.
+不可以。实时 SSH 传输、Socket.IO 协调和配额状态都是
+进程本地的。请只使用一个 `gthread` worker。只能在
+文档记载的范围内增加线程数，并至少保留四个 HTTP 线程。
 
-### Does Redis enable multiple workers?
+### Redis 能启用多个 worker 吗？
 
-No. Redis can preserve rate-limit counters across restarts. It does not
-externalize live SSH sessions or runtime coordination.
+不能。Redis 可以在重启之间保留速率限制计数器。它不会
+把实时 SSH 会话或运行时协调外部化。
 
-### Is WebSSH end-to-end encrypted?
+### WebSSH 是端到端加密的吗？
 
-No. HTTPS protects browser-to-WebSSH traffic and SSH protects
-WebSSH-to-target traffic. The WebSSH process necessarily sees terminal and file
-data between those links.
+不是。HTTPS 保护浏览器到 WebSSH 的流量，SSH 保护
+WebSSH 到目标的流量。WebSSH 进程必然能看到这两段链路之间的终端
+与文件数据。
 
-### Are SSH passwords stored?
+### SSH 密码会被存储吗？
 
-Connection and jump-host passwords are not written to profiles, the database,
-or audit logs. They are used during connection establishment and references are
-dropped afterward. Python cannot guarantee secure zeroing of secret bytes from
-process memory.
+连接密码和跳板机密码不会被写入配置文件、数据库
+或审计日志。它们在建立连接期间使用，随后相关引用即被
+丢弃。Python 无法保证从进程内存中安全地清零密钥字节。
 
-### Why did tmux fall back to a normal shell?
+### 为什么 tmux 回退到了普通 shell？
 
-tmux must be installed and usable on the remote host. If unavailable, WebSSH
-opens a regular shell.
+远程主机上必须已安装并可正常使用 tmux。如果不可用，WebSSH
+会打开普通 shell。
 
-### Why does `/ready` fail while `/health` succeeds?
+### 为什么 `/health` 成功而 `/ready` 失败？
 
-`/health` proves only that the process can answer. `/ready` also checks runtime
-admission, maintenance mode, SQLite, and writable durable storage.
+`/health` 只证明进程能够应答。`/ready` 还会检查运行时
+准入、维护模式、SQLite 以及可写的持久化存储。
 
-### Can LDAP users use a local password as fallback?
+### LDAP 用户可以使用本地密码作为回退吗？
 
-No. LDAP linking makes the account exclusively directory-managed, removes its
-dormant local password and alternative local factors, and prevents privilege
-mapping. Keep a separate local break-glass administrator.
+不可以。LDAP 关联会使账户完全由目录管理，移除其
+休眠的本地密码和备选的本地因素，并阻止权限
+映射。请保留一个独立的本地应急管理员。
 
-### Does disabling LDAP restore old passwords?
+### 禁用 LDAP 会恢复旧密码吗？
 
-No. Disabling the overlay removes LDAP routes and invalidates linked sessions,
-but linked accounts do not regain old local credentials. Unlinking a user while
-LDAP is operational requires setting a new local password.
+不会。禁用叠加文件会移除 LDAP 路由并使已关联的会话失效，
+但已关联的账户不会重新获得旧的本地凭据。在 LDAP 仍处于运行状态时解除某个用户的
+关联，需要设置新的本地密码。
 
-### Does a native backup include LDAP secrets?
+### 原生备份包含 LDAP 密钥吗？
 
-LDAP identity mappings in the SQLite database are included. The separate bind
-password and CA secret volume is intentionally excluded.
+SQLite 数据库中的 LDAP 身份映射会被包含。独立的绑定
+密码与 CA 密钥卷则被有意排除。
 
-### Why was a changed SSH host key rejected?
+### 为什么被更改的 SSH 主机密钥会被拒绝？
 
-WebSSH stores first-use trust persistently. A changed key can indicate a server
-rebuild, DNS/IP reassignment, or interception. Verify the new fingerprint out of
-band, remove the old trust record deliberately, and reconnect.
+WebSSH 会持久化存储首次使用的信任。密钥变化可能表示服务器
+重建、DNS/IP 重新分配或中间人拦截。请通过带外方式验证新的指纹，
+有意删除旧的信任记录，然后重新连接。
 
-### Can I use a CDN for frontend libraries?
+### 我可以为前端库使用 CDN 吗？
 
-The supported frontend is offline-capable and serves pinned vendored assets
-from `static/vendor/`. Runtime CDN dependencies conflict with that security and
-integrity model.
+受支持的前端具备离线能力，并从 `static/vendor/` 提供固定版本的内置
+资源。运行时 CDN 依赖与该安全和
+完整性模型相冲突。
 
-### Where is persistent data stored?
+### 持久化数据存储在哪里？
 
-Under `DATA_DIR`: `/app/data` in the container and `./data` by default for a
-source checkout. See [Data Storage and Persistence](Data-Storage-and-Persistence).
+在 `DATA_DIR` 之下：容器中为 `/app/data`，源码检出时默认为
+`./data`。参见 [数据存储与持久化](Data-Storage-and-Persistence)。
 
-### How do I report a vulnerability?
+### 我该如何报告漏洞？
 
-Do not open a public issue. Use the repository's private
-[security-advisory form](https://github.com/zhengwuji/web-ssh/security/advisories/new)
-or the contact listed in `SECURITY.md`.
+请不要创建公开 issue。请使用仓库的私有
+[安全公告表单](https://github.com/zhengwuji/web-ssh/security/advisories/new)，
+或 `SECURITY.md` 中列出的联系方式。

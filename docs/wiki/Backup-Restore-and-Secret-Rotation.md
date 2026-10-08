@@ -1,60 +1,51 @@
-# Backup, Restore, and Secret Rotation
+# 备份、恢复与密钥轮换
 
-WebSSH provides native administrator and CLI workflows for backing up persistent state, validating archives, restoring an installation, and rotating a container-managed `SECRET_KEY`.
+WebSSH 提供原生的管理员与 CLI 工作流，用于备份持久状态、校验归档、恢复安装以及轮换由容器管理的 `SECRET_KEY`。
 
-Backups are highly sensitive. An archive can contain user configuration, host information, the database, encrypted private keys, an admin-managed encrypted GitHub client secret, and the persisted application secret. Store it like a credential vault export.
+备份具有高度敏感性。归档可能包含用户配置、主机信息、数据库、加密私钥、由管理员管理的加密 GitHub client secret，以及持久化的应用密钥。请像对待凭据保险库导出一样存储它。
 
-## What a native backup contains
+## 原生备份包含的内容
 
-The archive covers the persistent `DATA_DIR` state required to restore the instance. Transient logs, temporary uploads, incomplete transfers, and runtime-only SSH channels are excluded.
+归档涵盖恢复实例所需的持久 `DATA_DIR` 状态。瞬时日志、临时上传、未完成的传输以及仅存在于运行时的 SSH 通道会被排除在外。
 
-Current archives use format version 2. The verifier also understands legacy format version 1/schema 0 for compatibility. Validation checks the manifest, file checksums, declared sizes, member paths, member count, compression behavior, and archive-wide limits before restore.
+当前归档使用格式版本 2。校验器同时理解旧版格式版本 1/schema 0 以保持兼容。校验会在恢复之前检查清单、文件校验和、声明的大小、成员路径、成员数量、压缩行为以及归档级别的限制。
 
-## Online backup in the web interface
+## Web 界面中的在线备份
 
-![WebSSH backup and restore safety flow with administrator step-up, maintenance mode, private staging, validation, and atomic activation](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/backup-restore-safety.png?raw=true)
+![WebSSH 备份与恢复安全流程，包含管理员提权、维护模式、私有暂存、校验与原子激活](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/backup-restore-safety.png?raw=true)
 
-Backup and restore share the same authorization boundary but use different safe
-paths. A backup coordinates writers before collecting consistent state. A
-restore stays in an instance-specific, quota-bounded staging area until archive
-validation and exact operator confirmation succeed.
+备份与恢复共享同一授权边界，但使用不同的安全路径。备份在收集一致状态之前协调各个写入者。恢复在归档校验与确切的操作员确认成功之前，始终停留在实例特定、受配额约束的暂存区域中。
 
-An administrator can create a consistent backup while the service is online. SQLite uses its backup API and file writers are coordinated so that the archive represents a coherent point in time.
+管理员可以在服务在线时创建一致性备份。SQLite 使用其备份 API，并且各文件写入者会被协调，使归档代表一个一致的时间点。
 
-The completed download is one-time, session-bound, and expires after `BACKUP_DOWNLOAD_TTL` seconds, which defaults to 600. Temporary archive construction occurs outside `DATA_DIR` in an instance-specific namespace.
+完成的下载是一次性的、与会话绑定的，并在 `BACKUP_DOWNLOAD_TTL` 秒后过期，默认值为 600。临时归档的构建发生在 `DATA_DIR` 之外、一个实例特定的命名空间中。
 
-Do not rely on the short-lived browser download as retention. Move the archive immediately to encrypted, access-controlled backup storage.
+不要依赖这种短时的浏览器下载作为保留手段。请立即将归档移动到加密、访问受控的备份存储中。
 
-## Restore in the web interface
+## Web 界面中的恢复
 
-Restore is deliberately disruptive and strongly confirmed:
+恢复是刻意具有破坏性的，并且需要强力确认：
 
-Online restore is enabled only when `BACKUP_TEMP_DIR` is an absolute, private,
-durable directory outside `DATA_DIR` and `BACKUP_RECOVERY_DURABLE=true` records
-the operator's explicit acknowledgement. The rollback journal and emergency
-archive live there, so the storage must survive both process termination and
-container recreation. The repository Compose file provides the separate
-`webssh_recovery` volume. A default system `/tmp` directory is suitable for
-backup construction, but intentionally does not enable online restore.
+仅当 `BACKUP_TEMP_DIR` 是指向 `DATA_DIR` 之外的绝对、私有、持久目录，且 `BACKUP_RECOVERY_DURABLE=true` 记录下操作员的显式确认时，在线恢复才会启用。回滚日志与应急归档存放于该处，因此该存储必须能在进程终止和容器重建后继续存在。仓库的 Compose 文件提供了独立的 `webssh_recovery` 卷。系统默认的 `/tmp` 目录适合构建备份，但有意不启用在线恢复。
 
-1. Upload the archive.
-2. Let WebSSH validate format and safety limits.
-3. Review the restore target and warnings.
-4. Complete the action-bound restore-prepare Step-up and acknowledge the sensitive operation.
-5. Submit the issued session-bound confirmation token, the exact `RESTORE` phrase, and destructive-restore confirmation with a second action-bound Step-up.
-6. WebSSH enters maintenance mode and stops accepting new work.
-7. Active sessions and transfers are closed.
-8. An emergency rollback archive is created.
-9. Persistent state is replaced and sessions are invalidated.
-10. The process terminates intentionally so the service manager can start a clean runtime.
+1. 上传归档。
+2. 让 WebSSH 校验格式与安全限制。
+3. 审查恢复目标与警告。
+4. 完成绑定操作的 restore-prepare Step-up，并确认该敏感操作。
+5. 提交已签发的会话绑定确认令牌、确切的 `RESTORE` 短语，以及带第二次绑定操作 Step-up 的破坏性恢复确认。
+6. WebSSH 进入维护模式并停止接受新工作。
+7. 活动会话与传输被关闭。
+8. 创建应急回滚归档。
+9. 持久状态被替换，会话被失效。
+10. 进程有意终止，以便服务管理器启动干净的运行时。
 
-If an interruption occurs during replacement, the restore workflow attempts rollback from the emergency archive. On restart, the durable recovery directory remains available for diagnosis or recovery. Still take an independent backup before every restore and keep it outside the instance.
+如果在替换期间发生中断，恢复工作流会尝试从应急归档回滚。重启后，持久恢复目录仍可用于诊断或恢复。每次恢复之前仍应进行独立备份，并将其保存在实例之外。
 
-## CLI backup and restore
+## CLI 备份与恢复
 
-CLI operations require every WebSSH process that uses the same `DATA_DIR` to be stopped. This avoids concurrent writers outside the coordinated web workflow.
+CLI 操作要求所有使用同一 `DATA_DIR` 的 WebSSH 进程都已停止。这避免了在协调式 Web 工作流之外的并发写入者。
 
-Discover exact options in the installed version:
+在已安装的版本中查看确切的选项：
 
 ```bash
 flask --app start:app backup create --help
@@ -62,55 +53,49 @@ flask --app start:app backup verify --help
 flask --app start:app backup restore --help
 ```
 
-For a container deployment, execute the command in a one-off container with the same data volume and configuration, while the normal application container is stopped.
+对于容器部署，请在一个一次性容器中执行该命令，使用相同的数据卷与配置，同时正常的应用容器处于停止状态。
 
-Without `--destination`, `backup create --confirm-offline` retains the parent of
-`DATA_DIR` as its default when writable. On a read-only or permission-restricted
-parent, it writes to the private instance directory under `BACKUP_TEMP_DIR` and
-prints the exact archive path. Explicit destinations are never redirected.
-The supplied Compose recovery volume persists fallback archives; custom paths
-must provide their own durability. Copy the result to encrypted off-host storage.
-An archive in a one-off container's writable layer disappears with that container.
+在没有 `--destination` 时，`backup create --confirm-offline` 会在 `DATA_DIR` 的父目录可写时将其保留为默认位置。在只读或权限受限的父目录上，它会写入 `BACKUP_TEMP_DIR` 下的私有实例目录，并打印确切的归档路径。显式指定的目标绝不会被重定向。所提供的 Compose 恢复卷会持久化回退归档；自定义路径必须自行提供持久性。将结果复制到加密的异地存储。一次性容器可写层中的归档会随该容器一起消失。
 
-## Safety limits
+## 安全限制
 
-Default operational limits include:
+默认的运行限制包括：
 
-| Setting | Default |
+| 设置 | 默认值 |
 |---|---:|
-| Upload size | 1 GiB |
-| Operation timeout | 30 minutes |
-| One-time download lifetime | 10 minutes |
-| Archive members | 10,000 |
-| Individual uncompressed file | 1 GiB |
-| Total uncompressed content | 10 GiB |
-| Compression ratio | 200:1 |
-| Manifest size | 10 MiB |
+| 上传大小 | 1 GiB |
+| 操作超时 | 30 分钟 |
+| 一次性下载有效期 | 10 分钟 |
+| 归档成员数 | 10,000 |
+| 单个未压缩文件 | 1 GiB |
+| 未压缩内容总量 | 10 GiB |
+| 压缩比 | 200:1 |
+| 清单大小 | 10 MiB |
 
-Reverse-proxy body-size and timeout settings must allow the same operation. Do not raise limits without assessing disk exhaustion and decompression-bomb risk.
+反向代理的正文大小与超时设置必须允许同一操作。在未评估磁盘耗尽与解压缩炸弹风险之前，不要提高这些限制。
 
-## Secret-key rotation
+## 密钥轮换
 
-The supported rotation command re-encrypts persisted secrets when WebSSH manages `DATA_DIR/secret_key`:
+受支持的轮换命令会在 WebSSH 管理 `DATA_DIR/secret_key` 时重新加密持久化的密钥：
 
 ```bash
 flask --app start:app rotate-secret-key --help
 ```
 
-All WebSSH processes must be stopped. Take and verify a backup first. The command changes the root used for encrypted per-user SSH keys and invalidates signed session state, so a partial or interrupted manual replacement can make persisted credentials unreadable.
+所有 WebSSH 进程都必须停止。先进行一次备份并校验它。该命令会更改用于加密每用户 SSH 密钥的根，并使已签名的会话状态失效，因此部分完成或被中断的手动替换可能使持久化凭据无法读取。
 
-If `SECRET_KEY` comes from an external environment variable or secret manager, rotating only the external value is not sufficient. Plan a controlled migration that keeps the old key available while persisted SSH keys, TOTP values, and the GitHub App client secret are re-encrypted. The built-in command is scoped to the container-managed persisted secret.
+如果 `SECRET_KEY` 来自外部环境变量或密钥管理器，仅轮换外部值是不够的。请规划一次受控迁移，在重新加密持久化的 SSH 密钥、TOTP 值以及 GitHub App client secret 期间保持旧密钥可用。内置命令的作用范围仅限于由容器管理的持久化密钥。
 
-## Restore drill
+## 恢复演练
 
-Test the full sequence on an isolated instance:
+在隔离实例上测试完整流程：
 
-1. Create and download a backup.
-2. Verify it with the CLI.
-3. Start a disposable instance with an empty data volume.
-4. Restore the archive.
-5. Confirm local, LDAP/OIDC where applicable, Passkey, SSH, SFTP, and host-key data.
-6. Confirm that old browser sessions are invalid.
-7. Record the observed recovery time and required secret material.
+1. 创建并下载一次备份。
+2. 使用 CLI 校验它。
+3. 使用空数据卷启动一个一次性实例。
+4. 恢复归档。
+5. 确认本地、LDAP/OIDC（如适用）、Passkey、SSH、SFTP 以及主机密钥数据。
+6. 确认旧的浏览器会话已失效。
+7. 记录观察到的恢复时间以及所需的密钥材料。
 
-An untested archive is not a verified recovery capability.
+未经测试的归档不是经过验证的恢复能力。

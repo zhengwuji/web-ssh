@@ -1,88 +1,84 @@
-# Security Model and Hardening
+# 安全模型与加固
 
-WebSSH is a privileged gateway: it receives SSH credentials, opens remote sessions, processes terminal data, and transfers files. HTTPS protects browser traffic in transit, but WebSSH itself necessarily sees the material needed to perform those operations. It is not end-to-end encrypted between the browser and the SSH server.
+WebSSH 是一个特权网关：它接收 SSH 凭据、打开远程会话、处理终端数据并传输文件。HTTPS 在传输过程中保护浏览器流量，但 WebSSH 本身必然能看到执行这些操作所需的材料。它在浏览器与 SSH 服务器之间并非端到端加密。
 
-## Trust boundaries
+## 信任边界
 
-Protect all of the following as sensitive systems:
+将以下所有内容作为敏感系统加以保护：
 
-- the WebSSH host and container runtime;
-- `DATA_DIR`, its backups, and the persisted `SECRET_KEY`;
-- the reverse proxy and TLS private keys;
-- LDAP bind, OIDC client, Redis, and other infrastructure credentials;
-- administrator browsers and accounts;
-- networks from WebSSH to SSH, LDAP, OIDC, Redis, and DNS endpoints.
+- WebSSH 主机与容器运行时；
+- `DATA_DIR`、其备份以及持久化的 `SECRET_KEY`；
+- 反向代理与 TLS 私钥；
+- LDAP bind、OIDC client、Redis 及其他基础设施凭据；
+- 管理员浏览器与账户；
+- 从 WebSSH 到 SSH、LDAP、OIDC、Redis 与 DNS 端点的网络。
 
-A compromise of the WebSSH process or its host can expose active terminal/file data and credentials supplied to it.
+WebSSH 进程或其主机被攻陷，可能泄露活动的终端/文件数据以及提供给它的凭据。
 
-## Built-in controls
+## 内置控制
 
-WebSSH includes:
+WebSSH 包含：
 
-- CSRF protection for HTTP forms and authenticated Socket.IO event contracts;
-- `HttpOnly`, `SameSite=Lax` session cookies and `Secure` cookies in production;
-- Content Security Policy, HSTS in production, frame denial, MIME sniffing prevention, referrer policy, and permissions policy;
-- per-user ownership checks for sessions, transfers, files, profiles, keys, and host-key data;
-- bounded connection, transfer, temporary-storage, and background-work quotas;
-- login, reauthentication, connection, backup, and default rate limits;
-- explicit SSH target policy and per-user host-key verification;
-- encrypted private-key storage derived per user;
-- security audit logging and administrator reauthentication;
-- bounded maintenance, shutdown, backup, and restore workflows.
+- 针对 HTTP 表单与已认证 Socket.IO 事件契约的 CSRF 保护；
+- `HttpOnly`、`SameSite=Lax` 会话 cookie，以及生产环境中的 `Secure` cookie；
+- Content Security Policy、生产环境中的 HSTS、拒绝框架嵌入、防止 MIME 嗅探、referrer policy 与 permissions policy；
+- 针对会话、传输、文件、profile、密钥与主机密钥数据的每用户所有权检查；
+- 有界的连接、传输、临时存储与后台工作配额；
+- 登录、重新认证、连接、备份以及默认速率限制；
+- 显式 SSH 目标策略与每用户主机密钥校验；
+- 按用户派生的加密私钥存储；
+- 安全审计日志与管理员重新认证；
+- 有界的维护、关闭、备份与恢复工作流。
 
-These are defense layers, not a reason to expose a default homelab configuration directly to the Internet.
+这些是纵深防御层，而不是将默认的家用实验环境配置直接暴露到 Internet 的理由。
 
-## Production baseline
+## 生产基线
 
-For Internet exposure:
+面向 Internet 暴露时：
 
-1. Use `docker-compose.production.yml` in addition to the base Compose file.
-2. Terminate modern HTTPS at a maintained reverse proxy.
-3. Bind WebSSH to loopback or a private network, not a public interface.
-4. Set exact HTTPS `CORS_ORIGINS`; never use a wildcard.
-5. Set `TRUSTED_PROXIES` to the exact number of trusted proxy layers.
-6. Keep `SESSION_COOKIE_SECURE=true`.
-7. Disable public registration and browser admin bootstrap.
-8. Confirm that production's mandatory internal-target blocking matches the intended SSH target network.
-9. Use Redis-backed rate limiting when counters must survive restarts.
-10. Protect and test backups, recovery codes, and the local administrator path.
+1. 在基础 Compose 文件之外同时使用 `docker-compose.production.yml`。
+2. 在维护良好的反向代理处终止现代 HTTPS。
+3. 将 WebSSH 绑定到回环地址或私有网络，而非公网接口。
+4. 设置确切的 HTTPS `CORS_ORIGINS`；绝不使用通配符。
+5. 将 `TRUSTED_PROXIES` 设置为可信代理层的确切数量。
+6. 保持 `SESSION_COOKIE_SECURE=true`。
+7. 禁用公开注册与浏览器管理员引导（bootstrap）。
+8. 确认生产环境的强制内网目标阻断与预期的 SSH 目标网络一致。
+9. 当计数器必须在重启后继续存在时，使用 Redis 支持的速率限制。
+10. 保护并测试备份、恢复码以及本地管理员路径。
 
-## SSH credentials and private keys
+## SSH 凭据与私钥
 
-Stored SSH private keys are encrypted with Fernet. The per-user encryption material is derived using PBKDF2-HMAC-SHA256 with 600,000 iterations from `SECRET_KEY:user_id`. This reduces exposure from a copied data directory alone, but it does not protect keys from a running, fully compromised application that also has the secret.
+存储的 SSH 私钥使用 Fernet 加密。每用户加密材料由 `SECRET_KEY:user_id` 通过 PBKDF2-HMAC-SHA256 以 600,000 次迭代派生而来。这降低了仅复制数据目录所带来的暴露风险，但如果一个正在运行的、被完全攻陷且同样持有该密钥的应用，它并不能保护密钥。
 
-Prefer scoped remote accounts, least privilege, short-lived credentials where possible, and SSH server-side restrictions. Never write passwords, tokens, or private-key contents to logs.
+优先使用范围受限的远程账户、最小权限、尽可能短期的凭据以及 SSH 服务器端限制。绝不将密码、令牌或私钥内容写入日志。
 
-## Host-key verification
+## 主机密钥校验
 
-WebSSH uses a per-user known-hosts store and trust-on-first-use workflow. A newly trusted key is pinned. A changed key is rejected until the discrepancy is independently investigated and the old trust record is explicitly revoked.
+WebSSH 使用每用户的 known-hosts 存储以及首次使用即信任（trust-on-first-use）工作流。新受信任的密钥会被固定（pinned）。密钥发生变更时会被拒绝，直到该差异被独立调查且旧的信任记录被显式撤销。
 
-Do not train users to accept changed keys as routine. Validate the remote host's fingerprint through a separate channel.
+不要培训用户将接受变更的密钥视为例行操作。请通过单独的渠道验证远程主机的指纹。
 
-## Identity-provider hardening
+## 身份提供方加固
 
-- LDAP: use `ldaps://` or StartTLS, validate the server certificate, use a read-only least-privileged service account, and restrict user/group filters.
-- OIDC: use a trusted issuer, exact redirect URIs, a secret file, and explicit domain or subject policy where required.
-- Passkeys: keep recovery codes offline and revoke lost authenticators promptly.
-- Tailscale SSH: use tight WebSSH-user, target, and remote-user allowlists; the node identity is shared.
+- LDAP：使用 `ldaps://` 或 StartTLS，校验服务器证书，使用只读的最小权限服务账户，并限制用户/组过滤器。
+- OIDC：使用受信任的签发方、确切的 redirect URI、密钥文件，以及在需要时显式的域或 subject 策略。
+- Passkey：将恢复码离线保存，并及时撤销丢失的验证器。
+- Tailscale SSH：使用严格的 WebSSH 用户、目标与远程用户允许列表；节点身份是共享的。
 
-LDAP/AD authentication does not copy directory passwords into WebSSH. With the
-secure default `LDAP_AUTO_PROVISION=false`, authentication requires an existing
-local account and explicit directory link. Explicit
-`LDAP_AUTO_PROVISION=true` may create only a non-admin account after a
-successful verified LDAP bind and never claims an existing local username.
+LDAP/AD 认证不会把目录密码复制到 WebSSH 中。在安全默认的 `LDAP_AUTO_PROVISION=false` 下，认证要求存在一个本地账户且已显式关联目录。显式设置 `LDAP_AUTO_PROVISION=true` 时，只能在成功完成已验证的 LDAP bind 之后创建一个非管理员账户，且绝不会占用已存在的本地用户名。
 
-## Data at rest and backups
+## 静态数据与备份
 
-The SQLite database, user JSON files, known-host data, notes, profiles, commands, and encrypted keys live in `DATA_DIR`. Native backups may also contain the persisted `SECRET_KEY`, making them sufficient to decrypt stored key material. Encrypt backups separately and restrict access and retention.
+SQLite 数据库、用户 JSON 文件、known-host 数据、笔记、profile、命令以及加密密钥都存放在 `DATA_DIR` 中。原生备份还可能包含持久化的 `SECRET_KEY`，使其足以解密已存储的密钥材料。请单独加密备份并限制访问与保留期限。
 
-## Vulnerability reporting
+## 漏洞上报
 
-Do not disclose suspected vulnerabilities in a public issue. Follow the private reporting channels in the repository's `SECURITY.md`, such as a GitHub private security advisory or the listed security contact.
+不要在公开 issue 中披露疑似漏洞。请遵循仓库 `SECURITY.md` 中的私密上报渠道，例如 GitHub 私密安全公告或所列出的安全联系人。
 
-## Hardening verification
+## 加固验证
 
-Before exposure, verify effective configuration rather than the intended `.env` alone:
+在暴露之前，请验证生效的配置，而不仅仅是预期的 `.env`：
 
 ```bash
 docker compose \
@@ -91,4 +87,4 @@ docker compose \
   config
 ```
 
-Then confirm HTTPS redirects, secure cookies, origin rejection, proxy IP handling, registration state, SSH target policy, host-key behavior, rate limiting, `/ready`, backup download expiry, and restore maintenance behavior.
+然后确认 HTTPS 重定向、安全 cookie、来源拒绝、代理 IP 处理、注册状态、SSH 目标策略、主机密钥行为、速率限制、`/ready`、备份下载过期以及恢复维护行为。

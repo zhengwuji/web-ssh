@@ -1,15 +1,12 @@
-# Data Storage and Persistence
+# 数据存储与持久化
 
-All durable WebSSH state belongs under `DATA_DIR`. Mount that directory on persistent storage and back it up as one coordinated unit.
+所有持久化的 WebSSH 状态都归属于 `DATA_DIR` 之下。请将该目录挂载到持久化存储上，并将其作为一个协调的整体进行备份。
 
-Container deployments require an absolute `DATA_DIR`. The entrypoint derives
-the logs, SSH-key storage, and generated `secret_key` from this single
-canonical root and refuses ambiguous legacy/new secret files. External secret
-manager values remain outside this filesystem contract.
+容器部署要求 `DATA_DIR` 为绝对路径。入口点会从这个单一的规范根目录派生日志、SSH 密钥存储以及生成的 `secret_key`，并拒绝含糊的旧版/新版密钥文件。外部密钥管理器的值仍处于该文件系统约定之外。
 
-## Directory layout
+## 目录布局
 
-Typical content includes:
+典型内容包括：
 
 ```text
 DATA_DIR/
@@ -30,60 +27,55 @@ DATA_DIR/
 `-- deleted_users/
 ```
 
-Exact auxiliary files can evolve. Do not selectively copy only the database and assume the installation is recoverable.
+确切的辅助文件可能会演进。不要只选择性地复制数据库，就假定该安装是可恢复的。
 
-## SQLite data
+## SQLite 数据
 
-`app.db` stores relational security and runtime metadata, including:
+`app.db` 存储关系型的安全与运行时元数据，包括：
 
-- local users and administrator state;
-- active/revoked socket session metadata;
-- persistent SSH session metadata;
-- Passkey credentials and challenges;
-- recovery-code hashes;
-- OIDC identities and one-use login state;
-- LDAP identity links and authorization metadata.
+- 本地用户与管理员状态；
+- 活动/已撤销的 socket 会话元数据；
+- 持久化的 SSH 会话元数据；
+- Passkey 凭据与挑战；
+- 恢复码哈希；
+- OIDC 身份与一次性登录状态；
+- LDAP 身份关联与授权元数据。
 
-SQLite is part of the one-process architecture. Do not run multiple independent WebSSH workers or containers against the same database and data directory.
+SQLite 是单进程架构的一部分。不要让多个独立的 WebSSH worker 或容器针对同一个数据库和数据目录运行。
 
-## Per-user files
+## 每用户文件
 
-Profiles, commands, command sets, jump hosts, application settings, notes, encrypted SSH keys, and known-host trust are isolated below `users/user_<id>/`. Every application access must also enforce authenticated user ownership; path separation alone is not the authorization control.
+Profile、命令、命令集、跳板机、应用设置、笔记、加密 SSH 密钥以及 known-host 信任都隔离在 `users/user_<id>/` 之下。每次应用访问还必须强制实施已认证用户的所有权检查；仅靠路径隔离并不是授权控制。
 
-## Atomic JSON updates
+## 原子 JSON 更新
 
-JSON-backed state follows a full load-modify-save cycle while holding the shared storage lock. Writes use an atomic temporary-file replacement and filesystem synchronization. Corrupt JSON is not silently replaced with an empty default because doing so could turn a recoverable incident into permanent data loss.
+以 JSON 为后端的状态在持有共享存储锁的同时，遵循完整的加载-修改-保存循环。写入使用原子临时文件替换与文件系统同步。损坏的 JSON 不会被静默替换为空默认值，因为这样做可能把一个可恢复的事件变成永久的数据丢失。
 
-Do not edit these files while WebSSH is running. Use the UI or supported APIs.
-For an oversized legacy profile or jump-host store, stop every process and use
-the `connection-store` Flask CLI so recovery remains inside the configured hard
-byte and record ceilings; avoid hand-editing JSON.
+不要在 WebSSH 运行时编辑这些文件。请使用 UI 或受支持的 API。
+对于过大的旧版 profile 或跳板机存储，请停止所有进程，并使用 `connection-store` Flask CLI，使恢复仍处于配置的硬性字节与记录上限之内；避免手工编辑 JSON。
 
-## Additive migrations
+## 增量迁移
 
-Persisted JSON schemas are migrated additively. Profiles currently use schema version 3; command sets, jump hosts, keys, settings, application settings, and SMB shares use version 2. Before changing a file, migration creates a private backup and writes the upgraded representation atomically. The profile v3 migration removes transient Tailscale launch-authorization state from disk; that state is derived from the live server policy for each response.
+持久化的 JSON schema 以增量方式迁移。Profile 当前使用 schema 版本 3；命令集、跳板机、密钥、设置、应用设置以及 SMB 共享使用版本 2。在更改文件之前，迁移会创建一个私有备份并以原子方式写入升级后的表示。profile v3 迁移会从磁盘移除瞬时的 Tailscale 启动授权状态；该状态对每个响应都从实时服务器策略派生而来。
 
-Database changes likewise preserve existing installations. Always take a verified native backup before upgrading across versions.
+数据库变更同样会保留现有的安装。在跨版本升级之前，务必先进行一次经过校验的原生备份。
 
-## Encrypted SSH keys
+## 加密的 SSH 密钥
 
-Private keys are encrypted with user-specific Fernet material derived from `SECRET_KEY:user_id` using PBKDF2-HMAC-SHA256 and 600,000 iterations. The key record, application secret, and user ID are therefore part of one recovery boundary.
+私钥使用由 `SECRET_KEY:user_id` 通过 PBKDF2-HMAC-SHA256 与 600,000 次迭代派生的、按用户区分的 Fernet 材料加密。因此密钥记录、应用密钥以及用户 ID 属于同一个恢复边界。
 
-Copying user files without `app.db` and the matching `SECRET_KEY` is not a valid migration. Replacing `SECRET_KEY` manually can make stored keys unreadable.
+在没有 `app.db` 和与之匹配的 `SECRET_KEY` 的情况下复制用户文件并不是有效的迁移。手动替换 `SECRET_KEY` 可能使已存储的密钥无法读取。
 
-## Deleted accounts
+## 已删除的账户
 
-User deletion first moves the user's directory to a quarantine area under `deleted_users`. If the database transaction fails, WebSSH attempts to restore the directory. Quarantine is an integrity mechanism, not an indefinite retention or backup strategy; apply an explicit policy to this sensitive residual data.
+用户删除会先把该用户的目录移动到 `deleted_users` 下的隔离区。如果数据库事务失败，WebSSH 会尝试恢复该目录。隔离区是一种完整性机制，不是无限期的保留或备份策略；请对此敏感的残留数据应用明确的策略。
 
-## Permissions
+## 权限
 
-Run the container or process under a dedicated identity and restrict `DATA_DIR` to it. Secret files should be read-only wherever possible. Avoid network filesystems with weak locking or atomic-rename semantics unless their behavior has been tested with SQLite and WebSSH's write pattern.
+在专用身份下运行容器或进程，并将 `DATA_DIR` 限制为该身份可访问。密钥文件应尽可能设为只读。除非其行为已针对 SQLite 与 WebSSH 的写入模式经过测试，否则避免使用锁或原子重命名语义较弱的网络文件系统。
 
-## Backup rule
+## 备份规则
 
-Use WebSSH's native backup workflow for a live instance. For an offline filesystem backup, stop every WebSSH process first and capture the complete directory consistently. See [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation).
+对于在线实例，请使用 WebSSH 的原生备份工作流。对于离线文件系统备份，请先停止所有 WebSSH 进程，并一致地捕获完整目录。参见 [备份、恢复与密钥轮换](Backup-Restore-and-Secret-Rotation)。
 
-Online restore has a second persistence boundary: its private rollback journal
-and emergency archive must use a durable absolute `BACKUP_TEMP_DIR` outside
-`DATA_DIR`, with `BACKUP_RECOVERY_DURABLE=true`. Do not place that directory on
-ephemeral container storage.
+在线恢复还有第二个持久化边界：其私有回滚日志与应急归档必须使用位于 `DATA_DIR` 之外、持久且绝对路径的 `BACKUP_TEMP_DIR`，并设置 `BACKUP_RECOVERY_DURABLE=true`。不要将该目录放在临时的容器存储上。

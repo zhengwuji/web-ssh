@@ -1,205 +1,203 @@
-# Users and Account Management
+# 用户与账户管理
 
-WebSSH is multi-user. Each account has separate profiles, commands, jump hosts,
-settings, notes, SSH keys, host trust, live sessions, and transfer ownership.
+WebSSH 是多用户的。每个账户都有各自独立的配置文件、命令、跳板机、
+设置、笔记、SSH 密钥、主机信任、实时会话以及传输归属。
 
-## Roles
+## 角色
 
-### Standard user
+### 标准用户
 
-A standard user can manage their own SSH/SFTP data and security factors. When
-OIDC is active, an eligible user can also link a provider identity to their own
-account after action-bound confirmation. They cannot access the Admin Panel or
-another user's state.
+标准用户可以管理自己的 SSH/SFTP 数据和安全因素。当
+OIDC 启用时，符合条件的用户还可以在完成操作绑定（action-bound）确认后，
+将提供方身份关联到自己的账户。他们无法访问管理面板或
+其他用户的状态。
 
-### Administrator
+### 管理员
 
-An administrator can:
+管理员可以：
 
-- create users;
-- lock and unlock accounts;
-- promote or demote administrators;
-- delete users;
-- configure registration;
-- view and export bounded audit data;
-- manage global host trust;
-- generate replacement recovery-code sets after reauthentication;
-- link and unlink OIDC identities;
-- link and unlink LDAP identities when LDAP is enabled;
-- create and restore native backups.
+- 创建用户；
+- 锁定和解锁账户；
+- 提升或降级管理员；
+- 删除用户；
+- 配置注册；
+- 查看并导出有界的审计数据；
+- 管理全局主机信任；
+- 在重新认证后生成替换用的恢复码集合；
+- 关联和解除关联 OIDC 身份；
+- 在启用 LDAP 时关联和解除关联 LDAP 身份；
+- 创建并恢复原生备份。
 
-Administrators remain subject to authentication, CSRF, rate limits, target
-confirmation, and action-bound Step-up requirements.
+管理员仍需遵守认证、CSRF、速率限制、目标
+确认以及操作绑定的 Step-up 要求。
 
-## Administrator Step-up
+## 管理员 Step-up
 
-Sensitive mutations require a one-use grant for the exact action and target.
-Examples include user creation and role/lock/delete changes, MFA reset, identity
-linking, authentication-feature policy, audit retention, global host trust, and
-backup/restore operations.
+敏感变更需要针对精确操作和精确目标的一次性授权。
+示例包括用户创建以及角色/锁定/删除变更、MFA 重置、身份
+关联、认证功能策略、审计保留、全局主机信任，以及
+备份/恢复操作。
 
-- A local administrator without enabled MFA confirms the current password.
-- An MFA-enabled administrator uses Passkey or TOTP.
-- Sufficiently recent strong OIDC assurance may be reused; otherwise provider
-  reauthentication is required.
+- 未启用 MFA 的本地管理员需确认当前密码。
+- 已启用 MFA 的管理员使用 Passkey 或 TOTP。
+- 足够新的强 OIDC 保证等级可以被复用；否则需要
+  提供方重新认证。
 
-The grant is bound to the current server-side authentication session, expires
-after five minutes, and is consumed before route execution. It cannot authorize
-another user or operation and is never persisted in browser storage.
+该授权绑定到当前的服务端认证会话，在五分钟后过期，
+并在路由执行前被消费。它无法授权
+其他用户或操作，也绝不会持久化到浏览器存储中。
 
-## First administrator
+## 首位管理员
 
-### Homelab browser bootstrap
+### 家庭实验室的浏览器引导
 
-On a fresh homelab database, `BOOTSTRAP_REGISTRATION_ENABLED` defaults to true.
-Exactly the first browser-created account becomes administrator, and the
-bootstrap registration path closes immediately afterward.
+在全新的家庭实验室数据库中，`BOOTSTRAP_REGISTRATION_ENABLED` 默认为 true。
+恰好由浏览器创建的第一个账户会成为管理员，并且
+该引导注册路径会在其后立即关闭。
 
-Do not expose an empty instance to an untrusted network. If another person
-claims the first account, they control the deployment.
+不要将空实例暴露到不受信任的网络。如果他人
+抢占了第一个账户，他们就控制了该部署。
 
-### CLI bootstrap
+### CLI 引导
 
-Production disables browser bootstrap. Create or promote an administrator:
+生产环境会禁用浏览器引导。创建或提升管理员：
 
 ```bash
 flask --app start:app create-admin --username admin
 ```
 
-Docker Compose:
+Docker Compose：
 
 ```bash
-docker compose exec webssh \
-  /app/entrypoint.sh flask --app start:app create-admin --username admin
+docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
 ```
 
-For automation, `--password-file` accepts a private regular non-symlink file.
-The command does not print or audit the password.
+对于自动化场景，`--password-file` 接受一个私有的、非符号链接的普通文件。
+该命令不会打印或审计密码。
 
-`ADMIN_USERS` is a compatibility option that promotes listed existing users on
-startup. Prefer the explicit CLI for normal administration.
+`ADMIN_USERS` 是一个兼容性选项，会在启动时提升其中列出的既有用户。
+日常管理请优先使用显式的 CLI。
 
-## Registration modes
+## 注册模式
 
-Two settings serve different purposes:
+有两项设置服务于不同目的：
 
-- `BOOTSTRAP_REGISTRATION_ENABLED` allows one first browser-created
-  administrator only while the database has no users.
-- `REGISTRATION_ENABLED` controls ordinary self-registration for additional
-  standard users.
+- `BOOTSTRAP_REGISTRATION_ENABLED` 仅在数据库尚无用户时，
+  允许创建一个由浏览器创建的首位管理员。
+- `REGISTRATION_ENABLED` 控制针对额外标准用户的
+  普通自助注册。
 
-The homelab Admin Panel can store the ordinary registration toggle. A stored
-setting takes precedence over the initial environment value. Production keeps
-registration closed even if an administrator attempts to reopen it from the UI.
+家庭实验室的管理面板可以存储普通的注册开关。已存储的
+设置优先于初始环境变量取值。生产环境会保持注册关闭，
+即使管理员试图从 UI 重新开启它。
 
-## Creating users
+## 创建用户
 
-Use **Administration → Users** to create a standard account. Generate a unique
-initial password, deliver it over a separate trusted channel, and require the
-user to change it.
+使用 **Administration → Users** 创建标准账户。生成一个唯一的
+初始密码，通过另一个受信任的渠道交付，并要求
+用户自行更改它。
 
-Passwords are bcrypt hashes at rest. New or changed passwords are limited to
-72 bytes after UTF-8 encoding because of bcrypt's input boundary.
+密码在静态存储时是 bcrypt 哈希。由于 bcrypt 的输入边界限制，
+新建或更改的密码在 UTF-8 编码后限制为 72 字节。
 
-## Locking an account
+## 锁定账户
 
-Locking prevents new HTTP and Socket.IO authorization. WebSSH also revokes the
-account's tracked resources:
+锁定会阻止新的 HTTP 和 Socket.IO 授权。WebSSH 还会撤销
+该账户被跟踪的资源：
 
-- active transfers;
-- Socket.IO sessions;
-- live SSH sessions;
-- pooled temporary SSH/SFTP connections;
-- persisted socket and SSH session metadata.
+- 进行中的传输；
+- Socket.IO 会话；
+- 实时 SSH 会话；
+- 池化的临时 SSH/SFTP 连接；
+- 持久化的 socket 和 SSH 会话元数据。
 
-Unlocking permits future authentication but does not restore terminated live
-connections.
+解锁会允许后续的认证，但不会恢复已终止的实时
+连接。
 
-## Deleting an account
+## 删除账户
 
-Deletion first revokes live access. The database row is deleted, while the
-active per-user directory is moved atomically to:
+删除会先撤销实时访问。数据库记录会被删除，而
+该用户的活跃目录会被原子性地移动到：
 
 ```text
 DATA_DIR/deleted_users/user_<id>_<uuid>
 ```
 
-This quarantine prevents a future numeric user ID from inheriting the deleted
-account's files. It is retention, not secure erasure. Operators must define a
-review and secure-disposal policy for `deleted_users`.
+这种隔离可以防止未来的某个数字用户 ID 继承已删除
+账户的文件。它是保留而非安全擦除。运维人员必须为
+`deleted_users` 制定审查与安全销毁策略。
 
-If database deletion fails, WebSSH attempts to move the quarantined directory
-back into the active namespace.
+如果数据库删除失败，WebSSH 会尝试将被隔离的目录
+移回活跃命名空间。
 
-## External identity ownership
+## 外部身份归属
 
-External identity resolves to a local WebSSH account. OIDC always requires an
-explicit verified link: an eligible signed-in user can self-link to their own
-account, while an administrator-managed link remains available as a recovery
-fallback. LDAP uses a controlled administrator link by default; explicit
-`LDAP_AUTO_PROVISION=true` can instead create a non-admin account only after
-successful directory authentication and only when no local username or stable
-identity collides.
+外部身份会解析到某个本地 WebSSH 账户。OIDC 始终要求一条
+经过验证的显式关联：符合条件的已登录用户可以自行关联到自己的
+账户，而由管理员管理的关联仍可作为恢复
+回退方案。LDAP 默认使用受控的管理员关联；显式的
+`LDAP_AUTO_PROVISION=true` 则可以在目录认证成功之后，
+且仅当没有本地用户名或稳定身份冲突时，创建一个非管理员（non-admin）账户。
 
-- OIDC uses the provider's stable issuer and subject. Email alone is never an
-  identity key.
-- LDAP uses the configured provider ID and stable directory attribute such as
-  `entryUUID` or `objectGUID`.
-- OIDC and LDAP mappings cannot be combined on one LDAP-managed account.
-- LDAP-managed accounts cannot be administrators.
-- LDAP linking removes the dormant local password and incompatible OIDC mapping;
-  Passkey/TOTP factors remain attached to the WebSSH account and can protect the
-  LDAP primary login. Unlinking requires a fresh local password.
+- OIDC 使用提供方稳定的 issuer 和 subject。仅凭邮箱绝不是
+  身份键。
+- LDAP 使用已配置的提供方 ID 以及稳定的目录属性，例如
+  `entryUUID` 或 `objectGUID`。
+- OIDC 与 LDAP 映射不能组合在同一个由 LDAP 管理的账户上。
+- 由 LDAP 管理的账户不能成为管理员。
+- LDAP 关联会移除休眠的本地密码和不兼容的 OIDC 映射；
+  Passkey/TOTP 因素仍附着在 WebSSH 账户上，并可以保护
+  LDAP 主登录。解除关联需要一个新的本地密码。
 
-Keep a separate local break-glass administrator before enabling external
-identity.
+在启用外部身份之前，请保留一个独立的本地应急
+管理员。
 
-## Password changes and logout
+## 密码更改与注销
 
-Local users can change their password through `/change-password`. Explicit
-logout is a POST action and revokes tracked Socket.IO, SSH, and temporary SFTP
-connections instead of only deleting the browser cookie.
+本地用户可以通过 `/change-password` 更改密码。显式
+注销是一个 POST 操作，会撤销被跟踪的 Socket.IO、SSH 和临时 SFTP
+连接，而不仅仅是删除浏览器 cookie。
 
-LDAP-managed users authenticate their primary credential exclusively against
-the directory and cannot use local password-change or OIDC. After recent LDAP
-verification they can enroll Passkey or TOTP factors and use Recovery Codes for
-the second factor.
+由 LDAP 管理的用户其主凭据完全针对目录进行认证，
+不能使用本地密码更改或 OIDC。在近期完成 LDAP
+验证之后，他们可以登记 Passkey 或 TOTP 因素，并使用恢复码作为
+第二因素。
 
-## Optional MFA
+## 可选 MFA
 
-Passkeys, authenticator apps, and Recovery remain optional per account. Admin
-activation makes a deployment-ready feature available; it does not force every
-user to enroll. Accounts without enabled MFA keep their existing password,
-LDAP, or configured OIDC sign-in. Once enabled on an account, a basic primary
-login continues to an available Passkey, TOTP, or Recovery method.
+Passkey、认证器应用和恢复码对每个账户而言始终是可选的。管理员
+启用只会让一项部署就绪的功能可用；它不会强制每个
+用户去登记。未启用 MFA 的账户保持其现有的密码、
+LDAP 或已配置的 OIDC 登录方式。一旦在某个账户上启用，基本的主
+登录会继续进入到某个可用的 Passkey、TOTP 或恢复方法。
 
-## Account recovery
+## 账户恢复
 
-MFA-enabled accounts can use one-time Recovery Codes only after successful
-password or LDAP primary verification. The resulting session remains restricted
-to factor replacement or explicit MFA disable. Administrators can replace a
-user's recovery set only after Step-up and exact target confirmation. Codes are
-shown once and stored only as hashes.
+已启用 MFA 的账户只有在密码或 LDAP 主验证成功之后，才能使用一次性
+恢复码。由此产生的会话仍被限制为
+仅可替换因素或显式禁用 MFA。管理员只有在完成 Step-up 和精确目标确认之后，
+才能替换某用户的恢复码集合。恢复码
+只展示一次，并且仅以哈希形式存储。
 
-An explicit administrator MFA reset deletes all target Passkeys, TOTP state,
-WebAuthn challenges, and Recovery Codes, disables MFA, advances the target's
-authentication generation, and revokes that account's active WebSSH/SSH access.
-It is distinct from changing a feature policy: enabling or disabling a feature
-does not forcibly kill existing sessions, which continue until their normal
-configured lifetime.
+显式的管理员 MFA 重置会删除目标账户的所有 Passkey、TOTP 状态、
+WebAuthn 挑战和恢复码，禁用 MFA，推进目标的
+认证代数，并撤销该账户的活跃 WebSSH/SSH 访问。
+它与更改功能策略不同：启用或禁用某项功能
+不会强制终止既有会话，这些会话会一直持续到其正常
+配置的生命周期结束。
 
-## Operational checklist
+## 运维检查清单
 
-- Maintain at least two tested administrative recovery paths where practical.
-- Review administrator membership regularly.
-- Lock an account immediately when access should stop.
-- Treat quarantined user files as sensitive retained data.
-- Export only the bounded audit data required for an investigation.
-- Test external identity with a non-admin pilot before migrating more users.
+- 在可行的情况下，至少维护两条经过测试的管理员恢复路径。
+- 定期审查管理员成员。
+- 当访问应当停止时，立即锁定该账户。
+- 将被隔离的用户文件视为敏感的保留数据。
+- 仅导出调查所需的有界审计数据。
+- 在迁移更多用户之前，先用一个非管理员试点账户测试外部身份。
 
-## Related pages
+## 相关页面
 
-- [Authentication Overview](Authentication-Overview)
-- [LDAP and Active Directory](LDAP-and-Active-Directory)
+- [认证概览](Authentication-Overview)
+- [LDAP 与 Active Directory](LDAP-and-Active-Directory)
 - [OpenID Connect](OpenID-Connect)
-- [Passkeys and Recovery Codes](Passkeys-and-Recovery-Codes)
+- [Passkey 与恢复码](Passkeys-and-Recovery-Codes)

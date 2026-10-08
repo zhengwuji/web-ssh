@@ -1,22 +1,17 @@
-# Passkeys, Authenticator Apps, and Recovery Codes
+# 通行密钥、验证器应用与恢复码
 
-Passkeys and authenticator apps are optional account factors. Recovery Codes
-provide second-factor recovery after a valid primary login. LDAP-managed users
-may enroll these local WebSSH factors after recent directory verification; the
-LDAP password remains exclusively directory-managed and is never stored.
+通行密钥（Passkey）与验证器应用是可选的账号因子。恢复码在有效的主登录之后提供第二因子恢复（second-factor recovery）。由 LDAP 管理的用户可在近期目录验证后注册这些 WebSSH 本地因子；LDAP 密码始终完全由目录管理，且绝不被存储。
 
-## Capability and activation
+## 能力与激活
 
-The operator first allows each feature in Compose/environment, then an
-administrator activates the ready capability under **Admin → Settings →
-Authentication features**. An Admin toggle cannot override
-`WEBAUTHN_ENABLED=false`, `TOTP_ENABLED=false`, or
-`RECOVERY_CODES_ENABLED=false`. Users who do not enroll and enable MFA retain
-their existing login.
+运维人员首先在 Compose/环境变量中允许各项功能，随后由管理员在 **Admin → Settings →
+Authentication features** 下激活已就绪的能力。管理员开关无法覆盖
+`WEBAUTHN_ENABLED=false`、`TOTP_ENABLED=false` 或
+`RECOVERY_CODES_ENABLED=false`。未注册并启用 MFA 的用户保留其现有的登录方式。
 
-## Passkey prerequisites
+## 通行密钥前提条件
 
-Passkeys are disabled by default. Configure the exact browser-visible origin:
+通行密钥默认禁用。请配置精确的浏览器可见源（origin）：
 
 ```bash
 WEBAUTHN_ENABLED=true
@@ -26,178 +21,139 @@ WEBAUTHN_ORIGIN=https://ssh.example.com
 MAX_WEBAUTHN_JSON_SIZE=65536
 ```
 
-- RP ID is the domain only, without scheme or port.
-- Origin includes scheme and any non-default port.
-- HTTPS is required outside the `localhost` homelab exception.
-- Reverse-proxy and public-origin settings must agree.
+- RP ID 仅为域名，不含 scheme 或端口。
+- Origin 包含 scheme 以及任何非默认端口。
+- 除 `localhost` 家庭实验室例外情形外，必须使用 HTTPS。
+- 反向代理与公共源设置必须保持一致。
 
-## Passkey security properties
+## 通行密钥安全属性
 
-- Username-less authentication uses discoverable credentials.
-- User verification is required by the ceremony.
-- Challenges are stored server-side and bound to the browser session.
-- Challenges are one use only and expire after five minutes.
-- Registration and authentication payloads are capped at 64 KiB.
-- Credential inventory and deletion require authenticated ownership.
+- 无用户名认证使用可发现凭据（discoverable credentials）。
+- 认证仪式（ceremony）要求用户验证。
+- 质询（challenge）存储在服务器端，并绑定到浏览器会话。
+- 质询仅可使用一次，并在五分钟后过期。
+- 注册与认证载荷上限为 64 KiB。
+- 凭据清点与删除需要经过认证的归属关系。
 
-## Direct Passkey login and Passkey MFA
+## 直接通行密钥登录与通行密钥 MFA
 
-Passkeys can be used in two distinct ways:
+通行密钥有两种不同用法：
 
-- **Direct Passkey login** selects **Sign in with Passkey** on the login page.
-  It does not ask for the account password and creates a phishing-resistant
-  session after the authenticator verifies the user.
-- **Passkey MFA after primary login** first verifies the local password, LDAP,
-  or another configured primary method, then requires an enrolled Passkey,
-  authenticator app, or Recovery Code.
+- **直接通行密钥登录**在登录页选择 **Sign in with Passkey**。
+  它不要求账号密码，并在验证器验证用户后创建抗钓鱼会话。
+- **主登录后的通行密钥 MFA** 先验证本地密码、LDAP
+  或其他已配置的主认证方式，然后要求已注册的通行密钥、
+  验证器应用或恢复码。
 
-Merely enrolling a Passkey does not make the account password path require a
-second factor. After adding and testing a Passkey, choose **Require Passkey MFA
-for password sign-in** in **Security**. WebSSH requires recent action-bound
-Step-up, enables account MFA atomically, and returns a new ten-code Recovery set
-once. Store those codes before leaving the page.
+仅仅注册通行密钥并不会让账号密码路径要求第二因子。添加并测试通行密钥后，请在 **Security** 中选择 **Require Passkey MFA
+for password sign-in**。WebSSH 要求近期、绑定动作的步进验证（Step-up），原子性启用账号 MFA，并一次性返回新的十码恢复集。请在离开页面之前保存这些码。
 
-When account MFA is enabled, an enrolled Passkey is one eligible second factor;
-WebSSH does not require the same specific Passkey on every login. Direct Passkey
-login remains available and already provides phishing-resistant assurance.
+当账号 MFA 已启用时，已注册的通行密钥是其中一个可用的第二因子；
+WebSSH 不要求每次登录都使用同一个特定通行密钥。直接通行密钥
+登录仍然可用，并且本身已提供抗钓鱼保障。
 
-The Admin authentication-feature switches are deployment and availability
-controls, not organization-wide enrollment policy. This release does not let
-an administrator force MFA or Passkey enrollment for every account. Such a
-policy needs an enrollment grace period, recovery and break-glass rules, and a
-safe treatment for service or directory-managed accounts to avoid mass
-lockout.
+管理员认证功能开关是部署与可用性控制，而非组织范围的注册策略。本版本不允许
+管理员为每个账号强制 MFA 或通行密钥注册。此类
+策略需要注册宽限期、恢复与应急（break-glass）规则，以及
+对服务账号或目录管理账号的安全处理，以避免大规模
+锁定。
 
-## Enroll a passkey
+## 注册通行密钥
 
-1. Sign in with the local password or LDAP. If MFA is already enabled, complete
-   another available factor or Recovery after that primary step.
-2. Open **Security**.
-3. Start passkey enrollment.
-4. Complete the authenticator prompt.
-5. Give the credential a recognizable name where supported.
-6. Sign out and test passkey login before depending on it.
-7. If password or directory sign-in must not remain a single-factor fallback,
-   return to **Security** and enable Passkey MFA.
+1. 使用本地密码或 LDAP 登录。如果 MFA 已启用，请在主登录步骤之后完成
+   另一个可用因子或恢复流程。
+2. 打开 **Security**。
+3. 开始通行密钥注册。
+4. 完成验证器提示。
+5. 在支持的情况下为该凭据取一个可辨识的名称。
+6. 登出，并在依赖它之前测试通行密钥登录。
+7. 如果密码或目录登录不应继续作为单因子回退方式，
+   返回 **Security** 并启用通行密钥 MFA。
 
-Enroll more than one authenticator when losing one device would otherwise lock
-out the account.
+当丢失一台设备会导致账号被锁定时，请注册多个验证器。
 
-## Legacy passkeys
+## 旧版通行密钥
 
-Older WebSSH releases could create non-discoverable credentials. They cannot be
-used by the current username-less flow.
+较早的 WebSSH 版本可能创建非可发现凭据。它们无法被
+当前的无用户名流程使用。
 
-Complete primary login and another available factor, or use Recovery after
-primary verification, open **Security**, and choose **Replace legacy passkey**.
-After recent primary authentication, WebSSH permits the same authenticator to
-create a discoverable replacement. Test the new credential before deleting the
-old record.
+完成主登录以及另一个可用因子，或在主验证后使用恢复流程，
+打开 **Security**，然后选择 **Replace legacy passkey**。
+在近期主认证之后，WebSSH 允许同一验证器创建可发现的
+替代凭据。请在删除旧记录之前先测试新凭据。
 
-## Authenticator apps (TOTP)
+## 验证器应用（TOTP）
 
-Set the deployment ceiling and restart/recreate WebSSH:
+设置部署上限并重启/重建 WebSSH：
 
 ```bash
 TOTP_ENABLED=true
 ```
 
-Then activate TOTP in the Admin Panel. On **Security**, the user chooses **Add
-authenticator**, confirms the recent primary credential when required, scans
-the locally rendered QR code (or enters the setup key), and verifies one
-six-digit code. The enrollment expires after five minutes. The secret is
-encrypted per user with key material derived from `SECRET_KEY`, is never stored
-in browser local/session storage, and accepted time steps cannot be replayed.
+然后在 Admin Panel 中激活 TOTP。在 **Security** 中，用户选择 **Add
+authenticator**，在需要时确认近期主凭据，扫描本地渲染的二维码（或输入设置密钥），并验证一个六位码。注册在五分钟后过期。该密钥按用户加密，密钥材料派生自 `SECRET_KEY`，绝不会存储在浏览器本地/会话存储中，且已接受的时间步无法重放。
 
-First activation enables MFA and generates a one-time Recovery set. Store it
-before leaving the page. Enabling TOTP remains voluntary; the Admin feature
-toggle makes enrollment available but does not enroll or force users.
+首次激活会启用 MFA 并生成一次性恢复集。请在离开页面之前保存它。启用 TOTP 仍是自愿的；管理员功能开关使注册可用，但不会强制注册或强迫用户。
 
-Each enrolled authenticator can be removed separately after action-bound
-Step-up. Removing the final TOTP authenticator keeps account MFA enabled when
-an active Passkey remains. WebSSH blocks removal of the last durable Passkey or
-TOTP factor while MFA is enabled; add and test a replacement first, or use the
-separate explicit MFA-disable action. Explicit disable removes all stored TOTP
-authenticators, while enrolled Passkeys remain available for direct sign-in.
+每个已注册验证器都可以在绑定动作的步进验证后单独移除。当仍有活动通行密钥时，移除最后一个 TOTP 验证器会保持账号 MFA 启用。在 MFA 启用期间，WebSSH 会阻止移除最后一个持久通行密钥或 TOTP 因子；请先添加并测试替代因子，或使用单独的显式 MFA 禁用操作。显式禁用会移除所有已存储的 TOTP 验证器，而已注册的通行密钥仍可用于直接登录。
 
-## Recovery codes
+## 恢复码
 
-Recovery codes are enabled by default and can be disabled with:
+恢复码默认启用，可通过以下配置禁用：
 
 ```bash
 RECOVERY_CODES_ENABLED=false
 ```
 
-`MAX_RECOVERY_JSON_SIZE` defaults to 4096 bytes.
+`MAX_RECOVERY_JSON_SIZE` 默认值为 4096 字节。
 
-WebSSH generates ten codes by default and supports a bounded set of 1-20. The
-plaintext codes are returned once. Only domain-separated SHA-256 hashes are
-stored, and verification performs fixed expensive work to reduce obvious timing
-differences.
+WebSSH 默认生成十个码，并支持 1-20 的有界集合。明文码仅返回一次。只存储域分隔的 SHA-256 哈希，并且验证会执行固定的高开销运算以减少明显的时序差异。
 
-## Generate and store codes
+## 生成并保存恢复码
 
-1. Open **Security** while signed in.
-2. Generate a recovery set.
-3. Save it in an encrypted password manager or another offline secure location.
-4. Confirm the storage can be accessed without the WebSSH instance.
+1. 在已登录状态下打开 **Security**。
+2. 生成一个恢复集。
+3. 将其保存在加密密码管理器或其他离线安全位置。
+4. 确认在没有 WebSSH 实例的情况下也可以访问该存储位置。
 
-Generating a new set replaces the previous set. Each code is consumed once.
+生成新集将替换上一集。每个码只能使用一次。
 
-## Recover the second factor
+## 恢复第二因子
 
-First complete the account's local-password or LDAP primary login. When WebSSH
-asks for MFA, select Recovery and enter one unused code. OIDC basic assurance
-can likewise lead to the local factor selection when the linked account enabled
-MFA.
+首先完成该账号的本地密码或 LDAP 主登录。当 WebSSH 要求 MFA 时，选择 Recovery 并输入一个未使用的码。当关联账号启用了 MFA 时，OIDC 基础保障同样可以进入本地因子选择。
 
-The code creates a restricted recovery session, not a normal login. Only
-`/security`, Passkey/TOTP replacement, explicit MFA disable, logout, and the
-required static resources are available. Normal terminal, SFTP, Admin, and API
-access remains blocked. Enrolling and verifying a replacement factor clears
-the restriction; explicit MFA disable requires typing the account name.
+该码会创建一个受限恢复会话，而非正常登录。仅可使用 `/security`、通行密钥/TOTP 替换、显式 MFA 禁用、登出以及所需的静态资源。正常终端、SFTP、Admin 和 API 访问仍被阻止。注册并验证替代因子会解除该限制；显式 MFA 禁用需要输入账号名称。
 
-## Administrator replacement
+## 管理员替换
 
-An administrator can generate a replacement set for a target account only
-after action-bound Step-up and exact target confirmation. Deliver the new set
-through a trusted channel. The administrator cannot retrieve old codes.
+管理员仅能在绑定动作的步进验证与精确目标确认之后，为目标账号生成替代集。请通过可信渠道交付新集。管理员无法取回旧码。
 
-An administrator can also perform an explicit MFA reset. This deletes the
-target's Passkeys, TOTP authenticators/enrollments, WebAuthn challenges, and
-Recovery Codes, disables MFA, increments the account authentication generation,
-and revokes that target's WebSSH/SSH sessions. The response never returns factor
-secrets. Use this only as a deliberate account-recovery action.
+管理员还可以执行显式 MFA 重置。这会删除目标的通行密钥、TOTP 验证器/注册、WebAuthn 质询以及恢复码，禁用 MFA，递增账号认证代数，并吊销该目标的 WebSSH/SSH 会话。响应绝不会返回因子密钥。请仅将此作为刻意的账号恢复操作使用。
 
-## Avoid lockout
+## 避免锁定
 
-- Keep at least one local break-glass administrator with two tested factors.
-- Test passkey sign-in after enrollment and origin changes.
-- Keep recovery codes separate from the WebSSH host and data volume.
-- Do not remove the last working factor until its replacement is tested.
-- After a suspected code disclosure, generate a new set immediately.
+- 至少保留一个带有两个已测试因子的本地应急管理员。
+- 在注册与源变更之后测试通行密钥登录。
+- 将恢复码与 WebSSH 主机和数据卷分开保存。
+- 在替代因子经过测试之前，不要移除最后一个可用因子。
+- 在怀疑码泄露后，立即生成新集。
 
-## Troubleshooting
+## 故障排查
 
-### The browser rejects the RP ID or origin
+### 浏览器拒绝 RP ID 或源
 
-Use the exact public hostname. Do not include a scheme or port in
-`WEBAUTHN_RP_ID`. Include the scheme and port in `WEBAUTHN_ORIGIN`. Confirm the
-reverse proxy preserves the public host and HTTPS scheme.
+使用精确的公共主机名。不要在 `WEBAUTHN_RP_ID` 中包含 scheme 或端口。在 `WEBAUTHN_ORIGIN` 中包含 scheme 与端口。确认反向代理保留公共主机与 HTTPS scheme。
 
-### A passkey works on localhost but not production
+### 通行密钥在 localhost 可用但在生产环境不可用
 
-Production has a different origin and usually a different RP ID. Reconfigure
-the exact public values and enroll credentials for that relying party.
+生产环境具有不同的源，通常还具有不同的 RP ID。请重新配置精确的公共值，并为该信赖方注册凭据。
 
-### A recovery code fails
+### 恢复码失败
 
-Codes are normalized for spaces and case, but are one use only. Complete the
-primary login, use an unused code from the latest set, and check that the
-account is not locked and that Recovery is effectively active.
+码会针对空格与大小写做规范化处理，但只能使用一次。完成主登录，使用最新集中未使用的码，并检查账号未被锁定且 Recovery 实际处于活动状态。
 
-## Related pages
+## 相关页面
 
-- [Authentication Overview](Authentication-Overview)
-- [Users and Account Management](Users-and-Account-Management)
-- [Production Deployment](Production-Deployment)
+- [认证概述](Authentication-Overview)
+- [用户与账号管理](Users-and-Account-Management)
+- [生产环境部署](Production-Deployment)

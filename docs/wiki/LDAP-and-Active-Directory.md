@@ -1,58 +1,57 @@
 # LDAP and Active Directory
 
-LDAP authentication is optional and disabled by default. The standard Compose
-deployment creates no LDAP volume, mount, helper, route, or background job.
-Opt in with `docker-compose.ldap.yml`.
+LDAP 认证是可选的，默认禁用。标准 Compose
+部署不会创建任何 LDAP 卷、挂载、辅助工具、路由或后台任务。
+请通过 `docker-compose.ldap.yml` 选择启用。
 
-## Security model
+## 安全模型
 
-- `ldap://` always upgrades with StartTLS before any bind.
-- `ldaps://` starts TLS immediately.
-- Plain LDAP authentication and disabled certificate verification are not
-  supported.
-- A least-privilege service account performs read-only user searches.
-- The submitted user password is used only for the final user bind and is never
-  stored.
-- Usernames are escaped as RFC 4515 filter values.
-- Searches are subtree-scoped, limited to two results, and must resolve to
-  exactly one entry.
-- With the safe default `LDAP_AUTO_PROVISION=false`, an administrator links a
-  stable directory identity to an existing WebSSH account. Explicit opt-in can
-  create a non-admin account only after successful directory authentication;
-  username-only trust is never sufficient.
-- Linked LDAP users cannot be administrators and cannot fall back to a local
-  password or OIDC. After recent directory verification they may enroll local
-  Passkey or TOTP second factors and receive second-factor Recovery Codes.
-- LDAP sessions are periodically revalidated and fail closed.
+- `ldap://` 在任何绑定之前始终先用 StartTLS 升级。
+- `ldaps://` 立即启动 TLS。
+- 不支持明文 LDAP 认证以及禁用证书验证。
+- 一个最小权限的服务账户执行只读用户搜索。
+- 提交的用户密码仅用于最终的用户绑定，绝不
+  被存储。
+- 用户名会按 RFC 4515 过滤器值进行转义。
+- 搜索以子树为范围，限制为两条结果，并且必须解析为
+  恰好一条条目。
+- 在安全的默认值 `LDAP_AUTO_PROVISION=false` 下，由管理员将一个
+  稳定的目录身份关联到某个既有的 WebSSH 账户。显式选择启用则可以在
+  目录认证成功之后创建非管理员（non-admin）账户；
+  仅凭用户名信任绝不充分。
+- 已关联的 LDAP 用户不能成为管理员，也不能回退到本地
+  密码或 OIDC。在近期完成目录验证之后，他们可以登记本地
+  Passkey 或 TOTP 第二因素，并获得第二因素恢复码。
+- LDAP 会话会被周期性重新验证，并失败即关闭（fail closed）。
 
-Keep at least one unlinked local break-glass administrator.
+请至少保留一个未关联的本地应急管理员。
 
-## Directory information required
+## 所需的目录信息
 
-Collect these values from the directory administrator:
+请从目录管理员处收集以下取值：
 
-1. An LDAP server DNS name covered by the server certificate.
-2. `ldap://host:389` with mandatory StartTLS or `ldaps://host:636`.
-3. The user search base DN.
-4. A read-only bind DN and password.
-5. A PEM CA bundle containing the issuer chain needed by WebSSH.
-6. A user filter containing exactly one literal `{username}` placeholder.
-7. A stable unique-ID attribute: usually `entryUUID` for OpenLDAP or
-   `objectGUID` for Active Directory.
-8. The directory's real disabled or locked account rule.
+1. 一个由服务器证书覆盖的 LDAP 服务器 DNS 名称。
+2. `ldap://host:389` 并强制使用 StartTLS（mandatory StartTLS），或 `ldaps://host:636`。
+3. 用户搜索基准 DN。
+4. 一个只读绑定 DN 和密码。
+5. 一个 PEM CA 捆绑包，包含 WebSSH 所需的签发链。
+6. 一个用户过滤器，包含恰好一个字面量 `{username}` 占位符。
+7. 一个稳定的唯一 ID 属性：通常 OpenLDAP 用 `entryUUID`，
+   Active Directory 用 `objectGUID`。
+8. 该目录真实的已禁用或已锁定账户规则。
 
-DNS and system time must work inside the WebSSH container. Do not use an IP
-address when the certificate contains only a DNS name.
+DNS 和系统时间必须在 WebSSH 容器内正常工作。当证书仅包含
+DNS 名称时，不要使用 IP 地址。
 
-For example, use `ldap://ldap.example.com:389` with mandatory StartTLS or
-`ldaps://ldap.example.com:636` for TLS from connection start.
+例如，使用 `ldap://ldap.example.com:389` 并强制使用 StartTLS（mandatory StartTLS），
+或使用 `ldaps://ldap.example.com:636` 以便从连接开始就使用 TLS。
 
-## Configure the Compose overlay
+## 配置 Compose 叠加文件
 
-Edit `docker-compose.ldap.yml` and fill every empty directory value. Use the
-base and LDAP files from the same WebSSH release or commit.
+编辑 `docker-compose.ldap.yml` 并填写每一个空的目录取值。请使用来自
+同一 WebSSH 发行版或提交的基础文件与 LDAP 文件。
 
-### Active Directory example
+### Active Directory 示例
 
 ```yaml
 services:
@@ -68,17 +67,17 @@ services:
       LDAP_UNIQUE_ID_ATTRIBUTE: objectGUID
 ```
 
-The final filter clause excludes disabled AD accounts. If access is restricted
-to a group, use a directory-approved `memberOf` rule. Nested group semantics
-vary and must be validated by the AD administrator.
+最后一个过滤器子句用于排除已禁用的 AD 账户。如果访问被限制
+在某个组，请使用经目录管理员批准的 `memberOf` 规则。嵌套组语义
+会有所不同，必须由 AD 管理员验证。
 
-`LDAP_BACKUP_URL` is optional and must identify another server for the same
-logical directory. It is tried only after the primary endpoint is unavailable.
-WebSSH connects to each URL directly, so every endpoint DNS name must match its
-own TLS certificate and be trusted by `LDAP_CA_FILE`; a round-robin alias is not
-needed. Invalid user credentials are not retried against the backup endpoint.
+`LDAP_BACKUP_URL` 是可选的，并且必须指向同一逻辑目录的
+另一台服务器。它仅在主端点不可用之后才会被尝试。
+WebSSH 会直接连接到每个 URL，因此每个端点 DNS 名称都必须与
+其自身的 TLS 证书匹配，并受 `LDAP_CA_FILE` 信任；不需要
+轮询（round-robin）别名。无效的用户凭据不会针对备份端点重试。
 
-### OpenLDAP example
+### OpenLDAP 示例
 
 ```yaml
 services:
@@ -94,286 +93,242 @@ services:
       LDAP_UNIQUE_ID_ATTRIBUTE: entryUUID
 ```
 
-Remove or replace the `pwdAccountLockedTime` clause if that operational
-attribute is not available.
+如果该操作性属性不可用，请移除或替换 `pwdAccountLockedTime` 子句。
 
-## Configuration reference
+## 配置参考
 
-| Variable | Default | Requirement |
+| 变量 | 默认值 | 要求 |
 |---|---:|---|
-| `LDAP_ENABLED` | `false` | Enable the subsystem |
-| `LDAP_PROVIDER_ID` | `default` | Stable 1-64 character local provider identifier |
-| `LDAP_URL` | empty | Exact `ldap://` or `ldaps://` server URL |
-| `LDAP_BACKUP_URL` | empty | Optional second URL for the same directory, tried after transport failure |
-| `LDAP_BASE_DN` | empty | User subtree base |
-| `LDAP_BIND_DN` | empty | Least-privilege search account DN |
-| `LDAP_BIND_PASSWORD_FILE` | `/run/webssh-auth/ldap_bind_password` | Absolute private file path |
-| `LDAP_CA_FILE` | `/run/webssh-auth/ldap_ca.pem` | Absolute PEM CA bundle path |
-| `LDAP_USER_FILTER` | empty | Exactly one `{username}` placeholder |
-| `LDAP_UNIQUE_ID_ATTRIBUTE` | empty | LDAP attribute name or numeric OID |
-| `LDAP_CONNECT_TIMEOUT` | `5` | 1-15 seconds |
-| `LDAP_OPERATION_TIMEOUT` | `5` | 1-30 seconds |
-| `LDAP_SESSION_REVALIDATION_SECONDS` | `300` | 60-3600 seconds |
-| `LDAP_LOGIN_RATE_LIMIT` | `5 per minute` | Per-IP login and diagnostic limit |
+| `LDAP_ENABLED` | `false` | 启用该子系统 |
+| `LDAP_PROVIDER_ID` | `default` | 稳定的 1-64 字符本地提供方标识符 |
+| `LDAP_URL` | 空 | 精确的 `ldap://` 或 `ldaps://` 服务器 URL |
+| `LDAP_BACKUP_URL` | 空 | 同一目录的可选第二个 URL，在传输失败后尝试 |
+| `LDAP_BASE_DN` | 空 | 用户子树基准 |
+| `LDAP_BIND_DN` | 空 | 最小权限搜索账户 DN |
+| `LDAP_BIND_PASSWORD_FILE` | `/run/webssh-auth/ldap_bind_password` | 私有文件绝对路径 |
+| `LDAP_CA_FILE` | `/run/webssh-auth/ldap_ca.pem` | PEM CA 捆绑包绝对路径 |
+| `LDAP_USER_FILTER` | 空 | 恰好一个 `{username}` 占位符 |
+| `LDAP_UNIQUE_ID_ATTRIBUTE` | 空 | LDAP 属性名或数字 OID |
+| `LDAP_CONNECT_TIMEOUT` | `5` | 1-15 秒 |
+| `LDAP_OPERATION_TIMEOUT` | `5` | 1-30 秒 |
+| `LDAP_SESSION_REVALIDATION_SECONDS` | `300` | 60-3600 秒 |
+| `LDAP_LOGIN_RATE_LIMIT` | `5 per minute` | 按 IP 的登录与诊断限制 |
 
-When LDAP is disabled, WebSSH does not read the secret files.
+当 LDAP 被禁用时，WebSSH 不会读取这些密钥文件。
 
-`LDAP_ENABLED=true` is only the deployment ceiling. After the container starts
-with a valid directory configuration, sign in with the local break-glass
-administrator and activate LDAP under **Admin → Settings → Authentication
-features**. If Compose leaves LDAP disabled, the Admin toggle is locked and
-cannot create a provider at runtime.
+`LDAP_ENABLED=true` 只是部署的上限。在容器以有效的目录配置
+启动之后，请使用本地应急管理员登录，并在 **Admin → Settings → Authentication
+features** 下激活 LDAP。如果 Compose 中 LDAP 保持禁用，管理面板的开关会被锁定，
+无法在运行时创建提供方。
 
-## Populate the secret volume
+## 填充密钥卷
 
-The overlay creates `webssh_auth_secrets`. WebSSH mounts it read-only at
-`/run/webssh-auth`. The helper service is the only Compose service with write
-access; it has no network, runs read-only apart from the volume, drops all
-capabilities, and uses `no-new-privileges`.
+该叠加文件会创建 `webssh_auth_secrets`。WebSSH 将其以只读方式挂载到
+`/run/webssh-auth`。辅助服务是唯一具有写访问权限的 Compose 服务；
+它没有网络，除该卷之外以只读方式运行，丢弃所有
+能力（capabilities），并使用 `no-new-privileges`。
 
-Set the bind password with a hidden interactive prompt:
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.ldap.yml \
-  --profile ldap-tools \
-  run --rm ldap-tools set-password
-```
-
-Install and validate the CA bundle on Linux or macOS:
+通过隐藏的交互式提示设置绑定密码：
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.ldap.yml \
-  --profile ldap-tools \
-  run --rm -T ldap-tools install-ca --stdin < company-ca.pem
+docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm ldap-tools set-password
 ```
 
-PowerShell:
+在 Linux 或 macOS 上安装并校验 CA 捆绑包：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm -T ldap-tools install-ca --stdin < company-ca.pem
+```
+
+PowerShell：
 
 ```powershell
-Get-Content -Raw .\company-ca.pem | docker compose `
-  -f docker-compose.yml `
-  -f docker-compose.ldap.yml `
-  --profile ldap-tools `
-  run --rm -T ldap-tools install-ca --stdin
+Get-Content -Raw .\company-ca.pem | docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm -T ldap-tools install-ca --stdin
 ```
 
-Check only file presence; contents are never printed:
+仅检查文件是否存在；内容绝不会被打印：
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.ldap.yml \
-  --profile ldap-tools \
-  run --rm ldap-tools status
+docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm ldap-tools status
 ```
 
-The helper validates input, caps file sizes, writes atomically, and applies
-private permissions. It remains usable when incomplete LDAP configuration stops
-the Flask app from starting.
+该辅助工具会校验输入、限制文件大小、以原子方式写入，并应用
+私有权限。当不完整的 LDAP 配置导致 Flask 应用无法启动时，
+它仍然可用。
 
-## Activate LDAP
+## 激活 LDAP
 
-1. Confirm every empty overlay value is filled.
-2. Populate the bind password and CA.
-3. Inspect the effective configuration:
-
-   ```bash
-   docker compose \
-     -f docker-compose.yml \
-     -f docker-compose.ldap.yml \
-     config
-   ```
-
-4. Start or recreate WebSSH:
+1. 确认每一个空的叠加文件取值都已填写。
+2. 填充绑定密码和 CA。
+3. 检查实际生效的配置：
 
    ```bash
-   docker compose \
-     -f docker-compose.yml \
-     -f docker-compose.ldap.yml \
-     up -d
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml config
    ```
 
-5. Review startup logs:
+4. 启动或重建 WebSSH：
 
    ```bash
-   docker compose \
-     -f docker-compose.yml \
-     -f docker-compose.ldap.yml \
-     logs webssh
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml up -d
    ```
 
-Unsafe URL, secret, CA, filter, attribute, and timeout settings stop startup.
-After readiness succeeds, activate LDAP in the Admin Panel. The login form does
-not appear until deployment allowance, readiness, and Admin activation are all
-true.
+5. 查看启动日志：
 
-For production, apply the production overlay last:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml logs webssh
+   ```
+
+不安全的 URL、密钥、CA、过滤器、属性和超时设置会阻止启动。
+在就绪状态检查成功之后，请在管理面板中激活 LDAP。在部署许可、就绪状态和管理面板激活
+三者同时为真之前，登录表单不会出现。
+
+对于生产环境，请最后应用生产叠加文件：
 
 ```bash
 export WEBSSH_ORIGIN=https://ssh.example.com
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.ldap.yml \
-  -f docker-compose.production.yml \
-  up -d
+docker compose -f docker-compose.yml -f docker-compose.ldap.yml -f docker-compose.production.yml up -d
 ```
 
-## Link users
+## 关联用户
 
-With `LDAP_AUTO_PROVISION=false` (recommended for controlled rollouts):
+使用 `LDAP_AUTO_PROVISION=false` 时（推荐用于受控推行）：
 
-1. Sign in with the local break-glass administrator.
-2. Open **Admin → Settings → LDAP directory**.
-3. Run **Check connection**. The browser receives only readiness category,
-   transport, and provider ID, never secrets.
-4. Create the target standard WebSSH account if it does not exist.
-5. On the Users tab, select **Link LDAP**.
-6. Complete the administrator Step-up prompt, then enter the directory username
-   and exact target WebSSH username.
-7. Sign out and test **Sign in with LDAP**.
+1. 使用本地应急管理员登录。
+2. 打开 **Admin → Settings → LDAP directory**。
+3. 运行 **Check connection**。浏览器只会收到就绪类别、
+   传输方式和提供方 ID，绝不会收到密钥。
+4. 如果目标标准 WebSSH 账户不存在，则创建它。
+5. 在 Users 标签页上，选择 **Link LDAP**。
+6. 完成管理员 Step-up 提示，然后输入目录用户名
+   和精确的目标 WebSSH 用户名。
+7. 注销并测试 **Sign in with LDAP**。
 
-Start with one non-admin pilot.
+请先从一个非管理员试点开始。
 
-For larger directories, `LDAP_AUTO_PROVISION=true` creates a non-admin,
-LDAP-managed WebSSH account only after the first successful directory password
-bind. Automatic provisioning never claims an existing local username, never
-creates an administrator, rejects invalid or overlong names without silently
-truncating them, and does not automatically delete stored data when a directory
-account later disappears.
+对于较大的目录，`LDAP_AUTO_PROVISION=true` 仅在首次成功的目录密码
+绑定之后，才创建一个非管理员（non-admin）的、由 LDAP 管理的 WebSSH 账户。自动配给
+never claims an existing local username（绝不会占用既有的本地用户名），绝不会
+创建管理员，会拒绝无效或过长的名称而不会静默
+截断它们，并且在目录账户后来消失时不会自动删除已存储的数据。
 
-Linking stores the stable provider and subject plus the current DN and directory
-username. A renamed DN can be updated after successful authentication as long as
-the stable ID still matches.
+关联会存储稳定的提供方与 subject，以及当前的 DN 和目录
+用户名。只要稳定 ID 仍然匹配，重命名后的 DN 就可以在认证成功之后
+被更新。
 
-Linking destroys the account's dormant local password and removes an
-incompatible OIDC mapping. Existing local MFA factors remain owned by the same
-WebSSH account and can protect LDAP primary login. The link operation revokes
-the target account's active access so the new identity boundary applies on its
-next login.
+关联会销毁该账户休眠的本地密码，并移除
+不兼容的 OIDC 映射。既有的本地 MFA 因素仍归属同一个
+WebSSH 账户，并可以保护 LDAP 主登录。关联操作会撤销
+目标账户的活跃访问，以便新的身份边界在其
+下次登录时生效。
 
-## LDAP with optional MFA
+## 搭配可选 MFA 的 LDAP
 
-LDAP proves the primary credential only. If the WebSSH account has not enabled
-MFA, successful directory verification completes login as before. If the user
-has enabled MFA, WebSSH creates a short-lived pending transaction and offers
-the account's active Passkey, TOTP, and Recovery methods. The LDAP password is
-discarded after the bind and is never stored for the second step.
+LDAP 只证明主凭据。如果该 WebSSH 账户尚未启用
+MFA，成功的目录验证会像以前一样完成登录。如果用户
+已启用 MFA，WebSSH 会创建一个短时效的待处理事务，并给出
+该账户当前活跃的 Passkey、TOTP 和恢复方法。LDAP 密码在绑定后
+即被丢弃，绝不会为第二步而存储。
 
-An LDAP-managed user can enroll a Passkey or authenticator app on **Security**
-after a recent successful directory login. Recovery Codes can then recover the
-second factor, but only after LDAP primary verification succeeds.
+由 LDAP 管理的用户可以在近期成功完成目录登录后，在 **Security** 上登记
+Passkey 或认证器应用。此后恢复码可以恢复
+第二因素，但仅在 LDAP 主验证成功之后。
 
-## Session revalidation
+## 会话重新验证
 
-Every linked account is revalidated at the configured interval. WebSSH revokes
-browser, Socket.IO, SSH, transfer, and pooled-connection access when:
+每个已关联账户都会按配置的间隔被重新验证。在以下情况下，WebSSH 会撤销
+浏览器、Socket.IO、SSH、传输和池化连接的访问：
 
-- LDAP is disabled;
-- the directory is unavailable;
-- certificate validation fails;
-- the user disappears;
-- the stable ID changes;
-- the account no longer matches the filter;
-- the mapping is missing or no longer eligible.
+- LDAP 被禁用；
+- 目录不可用；
+- 证书验证失败；
+- 用户消失；
+- 稳定 ID 发生变化；
+- 账户不再匹配该过滤器；
+- 映射缺失或不再具备资格。
 
-An LDAP outage therefore signs users out by design.
+因此，LDAP 中断会按设计将用户登出。
 
-## Disable LDAP
+## 禁用 LDAP
 
-Omit only `docker-compose.ldap.yml` when recreating WebSSH. For a homelab
-deployment, use the base file:
+在重建 WebSSH 时只省略 `docker-compose.ldap.yml`。对于家庭实验室
+部署，请使用基础文件：
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  up -d --force-recreate
+docker compose -f docker-compose.yml up -d --force-recreate
 ```
 
-For a production deployment, retain the production overlay:
+对于生产部署，请保留生产叠加文件：
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.production.yml \
-  up -d --force-recreate
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --force-recreate
 ```
 
-This removes LDAP environment and mounts without dropping the production
-security profile. The named secret volume remains detached, new LDAP logins
-stop, and linked users do not regain old passwords. Container recreation closes
-open WebSSH and SSH sessions, so schedule this change as maintenance.
+这会在不丢弃生产安全配置的前提下移除 LDAP 环境变量与挂载。
+具名密钥卷保持分离状态，新的 LDAP 登录
+停止，且已关联用户不会重新获得旧密码。容器重建会关闭
+打开的 WebSSH 和 SSH 会话，因此请将该变更安排为维护操作。
 
-## Return one user to local authentication
+## 将某个用户恢复为本地认证
 
-While LDAP is working, choose **Manage LDAP**, complete administrator Step-up,
-provide the exact target username and a new local password, then unlink the
-identity. The new password establishes a fresh local credential.
+在 LDAP 正常工作期间，选择 **Manage LDAP**，完成管理员 Step-up，
+提供精确的目标用户名和一个新的本地密码，然后解除
+该身份的关联。新密码会建立一个全新的本地凭据。
 
-## Remove LDAP secrets
+## 移除 LDAP 密钥
 
-After all identities are unlinked and LDAP is disabled:
+在所有身份都已解除关联且 LDAP 已禁用之后：
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.ldap.yml \
-  --profile ldap-tools \
-  run --rm ldap-tools remove
+docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm ldap-tools remove
 ```
 
-Do not delete the normal WebSSH data volume. LDAP mappings live in SQLite and
-are covered by native backup/restore. The bind password and CA remain in the
-separate volume and are intentionally excluded.
+不要删除正常的 WebSSH 数据卷。LDAP 映射存放在 SQLite 中，
+并受原生备份/恢复覆盖。绑定密码和 CA 保留在
+独立的卷中，并被有意排除在外。
 
-## Troubleshooting
+## 故障排查
 
-### Application refuses to start
+### 应用程序拒绝启动
 
-Run the standalone `status` helper, then read the exact configuration error in
-the WebSSH logs.
+运行独立的 `status` 辅助工具，然后在 WebSSH 日志中
+读取精确的配置错误。
 
-### Certificate failure
+### 证书失败
 
-Verify DNS, certificate SAN, system time, the complete issuer chain, and PEM
-encoding. DER and PKCS#12 files are not CA bundles for this setting.
+验证 DNS、证书 SAN、系统时间、完整签发链和 PEM
+编码。DER 和 PKCS#12 文件不是用于该设置的 CA 捆绑包。
 
-### Zero or multiple search results
+### 搜索结果为零或多条
 
-Test the search base and filter with the directory administrator. WebSSH never
-selects one entry from an ambiguous result.
+与目录管理员一起测试搜索基准和过滤器。WebSSH 绝不会
+从有歧义的结果中挑选一条条目。
 
-### AD user is found but bind fails
+### 找到了 AD 用户但绑定失败
 
-Check disabled, locked, expired, and logon-restricted state plus the domain
-controller's accepted username flow.
+检查已禁用、已锁定、已过期和登录受限状态，以及域
+控制器所接受的用户名流程。
 
-### LDAP outage signs users out
+### LDAP 中断会将用户登出
 
-Restore directory and TLS service. Periodic directory revalidation is
-intentionally fail-closed and revokes the affected LDAP-managed account when
-the directory cannot verify it. Do not add a password fallback.
+恢复目录和 TLS 服务。周期性的目录重新验证
+被有意设计为失败即关闭，并在目录无法验证时撤销受影响的
+由 LDAP 管理的账户。不要添加密码回退。
 
-### Provider ID changed
+### 提供方 ID 被更改
 
-Restore the original `LDAP_PROVIDER_ID`. It is part of every mapping and must
-remain stable for the lifetime of that directory integration.
+恢复原始的 `LDAP_PROVIDER_ID`。它是每个映射的一部分，并且必须
+在该目录集成存续期间保持稳定。
 
-## Disposable OpenLDAP laboratory
+## 一次性 OpenLDAP 实验室
 
-The integration lab validates generic LDAP behavior without an AD domain:
+该集成实验室在没有 AD 域的情况下验证通用 LDAP 行为：
 
 ```bash
-docker compose \
-  -f tests/integration/ldap/docker-compose.yml \
-  up --build
+docker compose -f tests/integration/ldap/docker-compose.yml up --build
 ```
 
-It exposes WebSSH on `http://localhost:5050` and uses test-only passwords.
-Never deploy it as production infrastructure.
+它在 `http://localhost:5050` 上暴露 WebSSH，并使用仅用于测试的密码。
+绝不要将其部署为生产基础设施。
 
-The lab does not replace AD-specific acceptance testing for `objectGUID`,
-disabled-account filters, certificate enrollment, or domain-controller policy.
+该实验室不能替代针对 `objectGUID`、
+已禁用账户过滤器、证书登记或域控制器策略的 AD 专项验收测试。

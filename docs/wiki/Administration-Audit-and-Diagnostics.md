@@ -1,77 +1,69 @@
-# Administration, Audit, and Diagnostics
+# 管理、审计与诊断
 
-WebSSH's administration interface combines account lifecycle controls, runtime diagnostics, security auditing, host-key visibility, and native backup operations. Administrative access is necessary but is not a substitute for recent reauthentication on sensitive actions.
+WebSSH 的管理界面结合了账户生命周期控制、运行时诊断、安全审计、主机密钥可见性以及原生备份操作。管理访问是必要的，但不能替代对敏感操作进行近期重新认证。
 
-## Administrative responsibilities
+## 管理职责
 
-Administrators can:
+管理员可以：
 
-- create, enable, disable, and remove local accounts;
-- assign or remove administrator privileges;
-- inspect runtime and connection diagnostics;
-- export security audit records and update retention settings;
-- manage native backup and restore operations;
-- review host-key state and security-relevant configuration;
-- link or unlink supported external identities under the applicable safeguards.
+- 创建、启用、禁用和删除本地账户；
+- 授予或移除管理员特权；
+- 检查运行时与连接诊断信息；
+- 导出安全审计记录并更新保留设置；
+- 管理原生备份与恢复操作；
+- 审查主机密钥状态以及与安全相关的配置；
+- 在适用的保障措施下关联或解除关联受支持的外部身份。
 
-Disabling or deleting a user revokes live activity, including Socket.IO, SSH, pooled connections, and transfers. Deletion first quarantines the user's data directory and rolls back that move if the database operation fails.
+禁用或删除用户会撤销其实时活动，包括 Socket.IO、SSH、池化连接以及传输。删除会先把用户的数据目录隔离，并在数据库操作失败时回滚该移动。
 
-## Administrator step-up
+## 管理员提权（step-up）
 
-Sensitive Admin mutations require a fresh authorization bound to the current
-server-side authentication session, exact action, exact target, and required
-authentication assurance. Local administrators without MFA confirm their
-password. MFA-enabled administrators use an enrolled Passkey or authenticator
-app (TOTP). LDAP-managed administrators revalidate against LDAP.
+敏感的 Admin 变更操作需要一次全新的授权，该授权与当前服务器端认证会话、确切操作、确切目标以及所需的认证保障级别绑定。未启用 MFA 的本地管理员需确认其密码。启用了 MFA 的管理员使用已注册的 Passkey 或身份验证器应用（TOTP）。由 LDAP 管理的管理员则针对 LDAP 重新校验。
 
-Recent sufficient OIDC assurance can be reused. Otherwise WebSSH starts
-provider reauthentication with `prompt=login`, `max_age=0`, and the configured
-`acr_values`. The resulting opaque grant expires after at most five minutes,
-works once, and is never stored in browser local/session storage. A grant for
-one user or action cannot authorize another target or operation.
+近期充分的 OIDC 保障可被复用。否则 WebSSH 会以 `prompt=login`、`max_age=0` 以及配置的 `acr_values` 启动提供方重新认证。生成的 opaque 授权最迟五分钟后过期，仅可使用一次，且绝不存储于浏览器的 local/session storage 中。针对某一用户或操作的授权不能用于授权另一目标或操作。
 
-## Security audit log
+## 安全审计日志
 
-Security-relevant actions are written to `DATA_DIR/logs/security_audit.log`. Rotation uses `AUDIT_LOG_MAX_BYTES` and `AUDIT_LOG_BACKUP_COUNT`; defaults are 10 MiB and five backups.
+与安全相关的操作会被写入 `DATA_DIR/logs/security_audit.log`。轮转使用 `AUDIT_LOG_MAX_BYTES` 和 `AUDIT_LOG_BACKUP_COUNT`；默认值分别为 10 MiB 和五个备份。
 
-Audit records are intended for investigation and accountability. They do not contain passwords, authentication tokens, private-key material, or file contents. Protect the log directory because event metadata can still reveal usernames, hosts, IP addresses, and administrative activity.
+审计记录用于调查与问责。它们不包含密码、认证令牌、私钥材料或文件内容。请保护日志目录，因为事件元数据仍可能泄露用户名、主机、IP 地址以及管理活动。
 
-## Audit export
+## 审计导出
 
-The administrator export endpoint applies server-side filtering and scans at most 50,000 records per request. If a result is incomplete, WebSSH marks it as truncated in metadata and response headers. Narrow the time range or filters instead of assuming a truncated export is complete.
+管理员导出端点应用服务器端过滤，并且每个请求最多扫描 50,000 条记录。如果结果不完整，WebSSH 会在元数据和响应头中将其标记为已截断。请缩小时间范围或过滤条件，而不要假定被截断的导出是完整的。
 
-Retention updates are authenticated administrator operations and are themselves auditable. Rotation and retention protect local disk capacity; forward logs to an external system if the threat model requires tamper-resistant or longer-term retention.
+保留设置的更新是经过认证的管理员操作，其本身同样可被审计。轮转与保留策略保护本地磁盘容量；如果威胁模型要求防篡改或更长时期的保留，请将日志转发到外部系统。
 
-## Live diagnostics
+## 实时诊断
 
-Diagnostics expose bounded information about:
+诊断会暴露以下方面的有界信息：
 
-- admitted Socket.IO connections;
-- active SSH and quick connections;
-- transfers and temporary storage;
-- background executor activity;
-- runtime shutdown or maintenance state;
-- configured capacity limits.
+- 已准入的 Socket.IO 连接；
+- 活动的 SSH 与快速连接；
+- 传输与临时存储；
+- 后台执行器活动；
+- 运行时关闭或维护状态；
+- 已配置的容量限制。
 
-Use diagnostics to compare demand with `GUNICORN_THREADS`, socket admission, SSH quotas, transfer quotas, and background workers. Avoid treating a single counter as the entire capacity picture.
+使用诊断将需求与 `GUNICORN_THREADS`、socket 准入、SSH 配额、传输配额以及后台 worker 进行比较。避免将单一计数器视为全部的容量图景。
 
-## Host-key administration
+## 主机密钥管理
 
-Host-key trust is stored per user. First-use trust, changed-key rejection, and explicit revocation are covered in [SSH Connections and Host Keys](SSH-Connections-and-Host-Keys). Administrators should not globally bypass a user's trust decision to resolve a connection error.
+主机密钥信任按用户存储。首次使用信任、密钥变更拒绝以及显式撤销详见 [SSH 连接与主机密钥](SSH-Connections-and-Host-Keys)。管理员不应为了排查连接错误而全局绕过用户的信任决定。
 
-## Operational health
+## 运行健康状况
 
-- `GET /health` proves process liveness.
-- `GET /ready` checks whether the instance can accept work.
+- `GET /health` 证明进程存活。
+- `GET /ready` 检查实例是否可以接受工作。
 
-Readiness fails during maintenance, shutdown admission closure, database failure, or a failed data-directory probe. Details are in [Health Checks and Troubleshooting](Health-Checks-and-Troubleshooting).
+就绪性在维护、关闭准入封停、数据库故障或数据目录探测失败时会被判为失败。详情见 [健康检查与故障排查](Health-Checks-and-Troubleshooting)。
 
-## Administration checklist
+## 管理检查清单
 
-1. Keep at least one tested local administrator and recovery path.
-2. Require HTTPS and a trusted reverse proxy for Internet exposure.
-3. Review disabled accounts, linked identities, and host-key changes regularly.
-4. Export or forward audit data according to the required retention period.
-5. Test native backups and restores on a separate instance.
-6. Monitor capacity and temporary disk usage before raising quotas.
-7. Apply upgrades only after reviewing configuration changes and release notes.
+1. 至少保留一个经过测试的本地管理员与恢复路径。
+2. 面向 Internet 暴露时要求 HTTPS 与可信反向代理。
+3. 定期审查已禁用账户、已关联身份以及主机密钥变更。
+4. 按所需的保留期限导出或转发审计数据。
+5. 在独立实例上测试原生备份与恢复。
+6. 在提高配额之前监控容量与临时磁盘使用量。
+7. 仅在审查配置变更和发行说明后应用升级。

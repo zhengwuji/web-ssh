@@ -1,205 +1,204 @@
-# Authentication Overview
+# 认证概览
 
-WebSSH supports local credentials plus optional external identity methods. All
-methods resolve to an existing WebSSH `User`; identity providers do not grant
-unbounded access to application state.
+WebSSH 支持本地凭据以及可选的外部身份方法。所有
+方法都会解析到既有的 WebSSH `User`；身份提供方不会授予
+对应用程序状态的无限制访问。
 
-Authentication assurance is derived conservatively from the completed method
-and its verified factors. Missing, malformed, or unmapped provider claims never
-upgrade a session silently.
+认证保证等级（authentication assurance）是根据所完成的方法
+及其已验证因素保守推导出来的。缺失、格式错误或未映射的提供方声明
+绝不会静默提升会话的等级。
 
-## Method comparison
+## 方法对比
 
-| Method | Default | Identity binding | Suitable for |
-|---|---:|---|---|
-| Local password | Enabled | WebSSH username | Bootstrap, break-glass, ordinary local accounts |
-| Passkey/WebAuthn | Disabled | Credential owned by a local account | Phishing-resistant local sign-in |
-| Authenticator app (TOTP) | Disabled | Encrypted secret owned by a local account | Optional second factor after password, LDAP, or basic OIDC |
-| Recovery code | Enabled | One-time code owned by a local account | Second-factor recovery after valid primary login |
-| OIDC | Disabled | Exact issuer and subject linked by the user or an admin | Existing OpenID Provider |
-| GitHub App | Disabled | Immutable numeric GitHub user ID | Linked GitHub identities and optional controlled provisioning |
-| LDAP/Active Directory | Disabled | Stable directory ID linked by an admin | Lab or organization directory authentication |
+| 方法 | 默认 | 身份绑定 | 适用场景 |
+|---|---|---:|---|---|
+| 本地密码 | 启用 | WebSSH 用户名 | 引导、应急、普通的本地账户 |
+| Passkey/WebAuthn | 禁用 | 由本地账户持有的凭据 | 抗钓鱼的本地登录 |
+| 认证器应用（authenticator app，TOTP） | 禁用 | 由本地账户持有的加密密钥 | 密码、LDAP 或基础 OIDC 之后的可选第二因素 |
+| 恢复码 | 启用 | 由本地账户持有的一次性代码 | 有效主登录之后的第二因素恢复 |
+| OIDC | 禁用 | 由用户或管理员关联的精确 issuer 与 subject | 既有的 OpenID Provider |
+| GitHub App | 禁用 | 不可变的数字 GitHub 用户 ID | 已关联的 GitHub 身份以及可选的可控配给 |
+| LDAP/Active Directory | 禁用 | 由管理员关联的稳定目录 ID | 实验室或组织的目录认证 |
 
-## Common controls
+## 通用控制
 
-![WebSSH authentication assurance flow from primary identity through optional MFA and Recovery to administrator step-up](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/authentication-assurance.png?raw=true)
+![WebSSH 认证保证等级（authentication assurance）流程：从主身份经由可选 MFA 与恢复码到管理员阶跃授权（administrator step-up）](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/authentication-assurance.png?raw=true)
 
-Primary authentication, account MFA, Recovery, and administrator Step-up are
-separate contracts. Recovery never substitutes for the primary credential, and
-an authenticated Admin session still needs a fresh one-use grant for each
-sensitive action and target.
+主认证、账户 MFA、恢复码和 administrator step-up（管理员阶跃授权）是
+彼此独立的契约。恢复码绝不能替代主凭据，而且
+已认证的管理员会话对每个敏感操作和目标仍然需要一份全新的一次性授权。
 
-- Flask-Login manages browser authentication.
-- Forms use Flask-WTF CSRF protection.
-- Unknown-user password checks perform dummy bcrypt work.
-- Login and reauthentication paths are rate-limited.
-- Session cookies are `HttpOnly` and `SameSite=Lax`; production requires the
-  `Secure` flag.
-- Lock, deletion, logout, and failed LDAP revalidation revoke tracked live
-  resources.
-- Authenticated Socket.IO events use `socket_login_required` and resource
-  operations add ownership checks.
+- Flask-Login 负责管理浏览器认证。
+- 表单使用 Flask-WTF 的 CSRF 防护。
+- 未知用户的密码校验会执行假的 bcrypt 运算。
+- 登录和重新认证路径都受速率限制。
+- 会话 cookie 为 `HttpOnly` 和 `SameSite=Lax`；生产环境要求
+  `Secure` 标志。
+- 锁定、删除、注销以及 LDAP 重新验证失败都会撤销被跟踪的实时
+  资源。
+- 已认证的 Socket.IO 事件使用 `socket_login_required`，资源
+  操作还会增加所有权检查。
 
-## Browser sign-in duration
+## 浏览器登录时长
 
-A normal WebSSH browser sign-in expires after 30 minutes by default, even while
-an SSH session is active. This authentication lifetime is separate from the SSH
-idle timeout. Each user can select 30 minutes, 1 hour, 2 hours, 4 hours, or 8
-hours under **Settings → Preferences → Sign-in session**. The selected duration
-applies to the next sign-in and remains an absolute limit from that successful
-authentication.
+正常的 WebSSH 浏览器登录默认在 30 分钟后过期，即使
+SSH 会话仍处于活动状态。该认证生命周期与 SSH
+空闲超时相互独立。每个用户可以在 **Settings → Preferences → Sign-in session**
+下选择 30 分钟、1 小时、2 小时、4 小时或 8
+小时。所选的时长适用于下一次登录，并且自该次成功
+认证起是一个绝对上限。
 
-Flask's signed session-cookie validation window covers the longest selectable
-duration, while the server-side authentication-session record remains the
-authoritative per-user expiry. A shorter selection therefore cannot be extended
-by retaining or replaying the signed browser cookie.
+Flask 的签名会话 cookie 校验窗口覆盖最长的可选
+时长，而服务端的认证会话记录仍是
+权威的按用户过期时间。因此，较短的选择无法通过保留或重放
+签名的浏览器 cookie 而被延长。
 
-Selecting **Remember me** at sign-in continues to use the separate seven-day
-remember duration. It is not changed by the personal normal-session setting.
-Longer normal sessions still retain server-side authentication records,
-account-generation checks, ownership enforcement, and immediate revocation on
-logout, account lock, or deletion. No option disables expiration.
+在登录时选择 **Remember me** 会继续使用独立的七天
+记住时长。它不会被个人的普通会话设置所改变。
+较长的普通会话仍保留服务端认证记录、
+账户代数检查、所有权强制执行，以及在
+注销、账户锁定或删除时立即撤销。没有任何选项可以禁用过期。
 
-## Deployment and Admin feature gates
+## 部署与管理面板功能门控
 
-Passkeys, TOTP, OIDC, LDAP, and Recovery each have three states:
+Passkey、TOTP、OIDC、LDAP 和恢复码各自都有三种状态：
 
-1. Compose/environment configuration allows the feature.
-2. Startup validation reports its dependencies and provider configuration ready.
-3. An administrator activates it under **Admin → Settings → Authentication features**.
+1. Compose/环境配置允许该功能。
+2. 启动校验报告其依赖项和提供方配置均已就绪。
+3. 管理员在 **Admin → Settings → Authentication features** 下激活它。
 
-All three must be true. If, for example, `OIDC_ENABLED=false` in Compose, the
-Admin toggle cannot start OIDC: it is locked with a deployment-configuration
-reason. Recreate the container with valid configuration first, verify readiness,
-then activate the feature. This two-step contract keeps the default Docker
-homelab functional and prevents a browser-only setting from creating an
-incomplete or unsafe provider setup.
+三者必须同时为真。例如，如果 Compose 中 `OIDC_ENABLED=false`，
+管理面板的开关就无法启动 OIDC：它会被锁定，并给出部署配置
+原因。请先用有效配置重建容器，验证就绪状态，
+然后激活该功能。这种两步式契约使默认的 Docker
+家庭实验室保持可用，并防止仅靠浏览器设置造成
+不完整或不安全的提供方配置。
 
-Disabling a feature blocks later login or enrollment attempts. It does not
-force-close an already authenticated browser session or active SSH work. Those
-sessions retain their ordinary idle/lifetime limits. Explicit account lock,
-delete, logout, or administrator MFA reset remains a revoking operation.
+禁用某项功能会阻止后续的登录或登记尝试。它不会
+强制关闭已认证的浏览器会话或进行中的 SSH 工作。那些
+会话仍保留其普通的空闲/生命周期限制。显式的账户锁定、
+删除、注销或管理员 MFA 重置仍然是撤销性操作。
 
-## Optional MFA
+## 可选 MFA
 
-MFA is never forced globally. Users without an enrolled and enabled factor keep
-their current login. Once a user enables MFA, password or LDAP performs the
-primary step and WebSSH offers only factors actually available to that account:
-Passkey, TOTP, and Recovery when enabled. A signed OIDC login can satisfy MFA
-only when its exact `acr` or `amr` value matches operator configuration.
+MFA 绝不会被全局强制。未登记并启用因素的
+用户保持其当前登录方式。一旦用户启用 MFA，密码或 LDAP 会完成
+主步骤，WebSSH 仅提供该账户实际可用的因素：
+在启用时提供 Passkey、TOTP 和恢复码。已签名的 OIDC 登录只有在
+其精确的 `acr` 或 `amr` 值与运维配置匹配时，才能满足 MFA。
 
-## Local passwords
+## 本地密码
 
-WebSSH passwords are bcrypt hashes with generated salts. They are separate from
-SSH target passwords. Target passwords are used for connection establishment
-and are not written into profiles, the database, or audit logs.
+WebSSH 的密码是带生成盐的 bcrypt 哈希。它们与
+SSH 目标密码相互独立。目标密码用于建立连接，
+不会被写入配置文件、数据库或审计日志。
 
-Keep one local administrator even when external identity is enabled. An
-external provider outage should not remove the operator's only recovery path.
+即使已启用外部身份，也要保留一个本地管理员。外部
+提供方故障不应移除运维人员唯一的恢复路径。
 
-## Passkeys
+## Passkey
 
-Passkeys are username-less discoverable WebAuthn credentials. The browser and
-server must agree on the exact RP ID and origin. HTTPS is required outside the
-localhost homelab exception.
+passkey（通行密钥）是无用户名、可发现的 WebAuthn 凭据。浏览器与
+服务器必须在精确的 RP ID 和源上达成一致。在
+localhost 家庭实验室例外之外，必须使用 HTTPS。
 
-Server-side challenges are bound to the browser session, one use only, and
-expire after five minutes.
+服务端挑战绑定到浏览器会话，仅可使用一次，并在五分钟后
+过期。
 
-See [Passkeys and Recovery Codes](Passkeys-and-Recovery-Codes).
+参见 [Passkey 与恢复码](Passkeys-and-Recovery-Codes)。
 
-## Recovery codes
+## 恢复码
 
-Recovery codes are one-time second-factor recovery for accounts that enabled
-MFA. WebSSH stores only domain-separated hashes and performs fixed expensive
-verification work. A new set invalidates the old set. The primary password or
-LDAP verification must succeed before a code can be submitted.
+恢复码是为启用了 MFA 的账户提供的一次性第二因素恢复手段。
+WebSSH 仅存储按域分隔的哈希，并执行固定开销较重的
+校验运算。新的恢复码集合会使旧集合失效。必须先成功完成
+主密码或 LDAP 验证，才能提交恢复码。
 
-The resulting recovery session is restricted to `/security`, replacement-factor
-enrollment, explicit MFA disable, logout, and required static resources. Store
-the plaintext set offline; it cannot be displayed again.
+由此产生的恢复会话被限制为 `/security`、替换因素
+登记、显式禁用 MFA、注销以及必需的静态资源。请将
+明文集合离线保存；它无法再次显示。
 
 ## OpenID Connect
 
-OIDC uses the authorization-code flow with PKCE, nonce, state, and a
-session-bound one-use state record. An eligible signed-in user can link the
-provider-verified issuer and subject to their own local account after
-action-bound confirmation. An administrator-managed link remains available as
-a recovery fallback. Optional subject and email-domain rules are additional
-admission filters, not identity keys.
+OIDC 使用授权码流程，并包含 PKCE、nonce、state 以及一条
+绑定会话的一次性 state 记录。符合条件的已登录用户可以在
+action-bound（操作绑定）确认之后，将提供方验证过的 issuer 和 subject 关联到自己的本地账户。
+由管理员管理的关联仍可作为
+恢复回退方案。可选的 subject 和邮箱域规则是额外的
+准入过滤条件，而非身份键。
 
-Assurance is conservative: absent, malformed, or unmapped signed claims remain
-`BASIC`. Provider push can be used only through the provider's own policy and a
-documented signed claim; WebSSH does not operate a mobile push service.
+保证等级是保守的：缺失、格式错误或未映射的已签名声明仍保持
+为 `BASIC`。提供方推送只能通过提供方自身的策略和一份
+有文档记载的已签名声明来使用；WebSSH 不运营移动推送服务。
 
-See [OpenID Connect](OpenID-Connect).
+参见 [OpenID Connect](OpenID-Connect)。
 
-## LDAP and Active Directory
+## LDAP 与 Active Directory
 
-LDAP uses mandatory certificate-verified StartTLS or LDAPS. A service account
-searches for exactly one entry, then WebSSH binds with the submitted user
-password. The password is not stored.
+LDAP 使用强制性的、经证书验证的 StartTLS 或 LDAPS。一个服务账户
+搜索出恰好一条条目，然后 WebSSH 用提交的用户
+密码进行绑定。该密码不会被存储。
 
-An administrator links the directory's stable ID to an existing non-admin
-account. The primary credential becomes exclusively LDAP-managed and is
-periodically revalidated fail-closed. After a recent directory login the user
-may enroll local Passkey or TOTP second factors; WebSSH never stores the LDAP
-password.
+管理员将目录的稳定 ID 关联到某个既有的非管理员
+账户。主凭据随即变为完全由 LDAP 管理，并
+以失败即关闭（fail-closed）的方式被周期性重新验证。在近期完成目录登录之后，用户
+可以登记本地 Passkey 或 TOTP 第二因素；WebSSH 绝不会存储 LDAP
+密码。
 
-See [LDAP and Active Directory](LDAP-and-Active-Directory).
+参见 [LDAP 与 Active Directory](LDAP-and-Active-Directory)。
 
-## GitHub App authentication
+## GitHub App 认证
 
-GitHub is configured at runtime in the Admin Panel and does not require a
-Compose overlay, environment variables, or an additional secret mount. The
-authorization-code flow uses PKCE and server-side one-use state. WebSSH keeps
-only the immutable numeric GitHub user ID and display metadata; temporary user
-access tokens are discarded after identity and optional organization checks.
+GitHub 在运行时于管理面板中配置，不需要
+Compose 叠加文件、环境变量或额外的密钥挂载。该
+授权码流程使用 PKCE 和服务端一次性 state。WebSSH 仅
+保留不可变的数字 GitHub 用户 ID 和显示元数据；临时用户
+访问令牌在完成身份检查及可选的组织检查后即被丢弃。
 
-Username or email equality never links accounts. Auto-provisioning is disabled
-by default and can create only non-admin users. See
-[GitHub Authentication](GitHub-Authentication).
+用户名或邮箱相等绝不会关联账户。自动配给默认
+禁用，且只能创建非管理员用户。参见
+[GitHub 认证](GitHub-Authentication)。
 
-## Login-mode separation
+## 登录模式分离
 
-The login UI presents optional identity methods as deliberate modes. A user who
-chooses LDAP enters a dedicated LDAP form with a clear way back instead of
-mixing directory fields into the local login form.
+登录 UI 将可选的身份方法呈现为刻意分离的模式。选择
+LDAP 的用户会进入专用的 LDAP 表单，并拥有清晰的返回路径，而不是
+把目录字段混入本地登录表单。
 
-This separation matters operationally: local, OIDC, GitHub, Passkey, TOTP,
-Recovery, and LDAP flows have different failure and recovery semantics.
+这种分离在运维上很重要：本地、OIDC、GitHub、Passkey、TOTP、
+恢复码和 LDAP 流程具有不同的失败与恢复语义。
 
-## Administrator step-up
+## 管理员阶跃授权（administrator step-up）
 
-Sensitive Admin mutations require a fresh, action-bound authorization. Local
-administrators without MFA confirm their password. MFA-enabled administrators
-use Passkey or TOTP. Recent sufficient OIDC assurance may be reused; otherwise
-WebSSH opens provider reauthentication with `prompt=login`, `max_age=0`, and
-configured `acr_values`.
+敏感的管理操作需要一份全新的、操作绑定的授权。未启用 MFA 的本地
+管理员需确认其密码。已启用 MFA 的管理员
+使用 Passkey 或 TOTP。足够新的 OIDC 保证等级可以被复用；否则
+WebSSH 会以 `prompt=login`、`max_age=0` 以及
+配置的 `acr_values` 打开提供方重新认证。
 
-The opaque grant lasts at most five minutes, works once, and is bound to the
-current server-side authentication session, exact action, exact target, and
-required assurance. A token for locking user 7 cannot promote user 7, lock user
-8, or be replayed. It is never placed in browser local/session storage.
+该不透明授权至多持续五分钟，仅能使用一次，并绑定到
+当前服务端认证会话、精确操作、精确目标以及
+所需保证等级。用于锁定用户 7 的令牌不能提升用户 7、锁定用户
+8，也不能被重放。它绝不会被放入浏览器本地/会话存储。
 
-## Session revocation
+## 会话撤销
 
-Account revocation is broader than clearing a cookie. WebSSH attempts to cancel
-transfers, disconnect Socket.IO sessions, close SSH sessions, close pooled
-connections, and remove persisted session metadata.
+账户撤销比清除一个 cookie 的范围更广。WebSSH 会尝试取消
+传输、断开 Socket.IO 会话、关闭 SSH 会话、关闭池化
+连接，并移除持久化的会话元数据。
 
-LDAP adds periodic directory revalidation. A missing or changed identity,
-directory exclusion, TLS failure, or outage fails the managed user's later
-authorization. Feature-policy changes themselves do not mass-kill existing SSH
-sessions; users can finish within the normal configured lifetime.
+LDAP 增加了周期性的目录重新验证。身份缺失或发生变化、
+目录排除、TLS 失败或目录中断都会使受管用户的后续
+授权失败。功能策略变更本身不会大规模终止既有的 SSH
+会话；用户可以在正常的配置生命周期内完成工作。
 
-## Recommended rollout order
+## 建议的推行顺序
 
-1. Deploy WebSSH with a local administrator.
-2. Test local login and store break-glass Recovery Codes offline.
-3. Put the instance behind its final HTTPS origin.
-4. Allow and activate Passkeys/TOTP, then let a pilot user enroll voluntarily.
-5. Configure one external provider.
-6. Link one non-admin pilot account.
-7. Test provider outage and rollback behavior.
-8. Expand only after the break-glass path is verified.
+1. 使用一个本地管理员部署 WebSSH。
+2. 测试本地登录，并将应急恢复码离线保存。
+3. 将实例置于其最终的 HTTPS 源之后。
+4. 允许并激活 Passkey/TOTP，然后让一个试点用户自愿登记。
+5. 配置一个外部提供方。
+6. 关联一个非管理员试点账户。
+7. 测试提供方故障与回滚行为。
+8. 仅在应急路径验证通过后再扩大范围。

@@ -1,189 +1,183 @@
-# SSH Connections and Host Keys
+# SSH 连接与主机密钥
 
-WebSSH opens SSH connections from the server process to the target. The browser
-does not connect directly to the SSH server.
+WebSSH 从服务器进程向目标发起 SSH 连接。浏览器
+不会直接连接到 SSH 服务器。
 
-## Connection methods
+## 连接方式
 
-Open **Quick Connect** or launch a saved profile. A connection includes:
+打开 **Quick Connect** 或启动已保存的配置文件。一个连接包含：
 
-- hostname or IP address;
-- SSH port, normally `22`;
-- remote operating-system username;
-- password, stored SSH key, or authorized Tailscale SSH mode;
-- optional jump host;
-- optional persistent tmux selection;
-- optional post-connect command or command set.
+- 主机名或 IP 地址；
+- SSH 端口，通常为 `22`；
+- 远程操作系统用户名；
+- 密码、已存储的 SSH 密钥或已授权的 Tailscale SSH 模式；
+- 可选的跳板主机；
+- 可选的持久 tmux 选择；
+- 可选的连接后命令或命令集。
 
-Connection passwords are not stored in profiles or audit logs. Stored private
-keys are encrypted at rest and decrypted only when needed for authentication.
+连接密码不会存储在配置文件中，也不会记入审计日志。已存储的私钥
+在静态时加密，仅在认证需要时解密。
 
-## Stored SSH keys
+## 已存储的 SSH 密钥
 
-WebSSH accepts RSA, Ed25519, and ECDSA private keys supported by the installed
-Paramiko runtime. Each user's keys are isolated below their own data directory.
+WebSSH 接受已安装的 Paramiko 运行时所支持的 RSA、Ed25519 和 ECDSA 私钥。每个用户的密钥隔离在其各自的数据目录之下。
 
-Private-key content is encrypted with Fernet. A per-user key is derived from
-`SECRET_KEY:user_id` through PBKDF2-HMAC-SHA256 with 600,000 iterations. Key
-directories use mode `0700` and files use `0600` on POSIX systems.
+私钥内容使用 Fernet 加密。每用户密钥通过 PBKDF2-HMAC-SHA256 以 600,000 次迭代从
+`SECRET_KEY:user_id` 派生。在 POSIX 系统上，密钥
+目录使用 `0700` 权限，文件使用 `0600` 权限。
 
-`SECRET_KEY` is the root of this protection. Anyone with both the application
-secret and encrypted files can decrypt the keys. Preserve the secret during
-updates and protect backups accordingly.
+`SECRET_KEY` 是这一保护机制的根基。同时拥有应用
+密钥与加密文件的人可以解密这些密钥。在
+更新期间请保留该密钥，并相应地保护备份。
 
-The key manager supports upload/import, rename, replacement, and deletion. Key
-paths are validated against the owning user's key directory, and writes are
-atomic.
+密钥管理器支持上传/导入、重命名、替换和删除。密钥
+路径会对照所属用户的密钥目录进行校验，且写入是
+原子性的。
 
-## Host-key trust
+## 主机密钥信任
 
-WebSSH uses persistent trust on first use (TOFU):
+WebSSH 使用首次使用时持久信任（TOFU）：
 
-1. On the first connection to a host identity, the server key fingerprint is
-   stored and logged.
-2. Later connections require the stored key to match.
-3. A changed key is rejected instead of being silently accepted.
+1. 首次连接到某个主机身份时，服务器密钥指纹会被
+   存储并记录到日志。
+2. 后续连接要求已存储的密钥与之匹配。
+3. 密钥发生变化时会被拒绝，而不会被静默接受。
 
-Trust is scoped to the relevant user or administrator-managed global store.
-Users can inspect and revoke their own trust records in the Security Center;
-administrators can manage global trust.
+信任的作用域限定为相应用户或由管理员管理的全局存储。
+用户可以在 Security Center 中查看并吊销自己的信任记录；
+管理员可以管理全局信任。
 
-## Add global host trust
+## 添加全局主机信任
 
-Administrators can add a verified OpenSSH `known_hosts` record under **Admin →
-Settings → Global SSH host trust**. The import accepts exactly one bounded
-record, validates the hostname pattern and public key, requires action-bound
-administrator Step-up, and returns only fingerprint metadata to the browser.
+管理员可以在 **Admin →
+Settings → Global SSH host trust** 下添加经过验证的 OpenSSH `known_hosts` 记录。导入操作只接受一条有界记录，会校验主机名模式与公钥，要求绑定动作的管理员步进验证，并且只向浏览器返回指纹元数据。
 
-One way to collect a candidate record is:
+收集候选记录的一种方式是：
 
 ```bash
 ssh-keyscan -p 22 server.example
 ```
 
-`ssh-keyscan` collects a key but does **not** prove its identity. Verify the
-fingerprint through a separate trusted channel, for example with the server
-owner, console, or configuration management, before importing it. You can
-inspect a collected record with:
+`ssh-keyscan` 会收集密钥，但**不能**证明其身份。请通过独立可信渠道验证
+指纹，例如与服务器所有者、控制台或配置管理
+核对，然后再导入它。你可以使用以下命令检查收集到的记录：
 
 ```bash
 ssh-keygen -lf candidate_known_hosts
 ```
 
-Paste one verified `hostname key-type base64-key` line into the Admin field.
-Hashed hostnames, non-default-port tokens such as `[server.example]:2222`,
-multi-host records, and `@revoked` records are supported. Duplicate records are
-rejected. A different key for the same host token and algorithm must be
-verified and the old record explicitly removed first.
+将一行经过验证的 `hostname key-type base64-key` 粘贴到管理员字段中。
+支持哈希主机名、诸如 `[server.example]:2222` 的非默认端口标记、
+多主机记录以及 `@revoked` 记录。重复记录会被
+拒绝。同一主机标记与算法的不同密钥必须先
+经过验证，并显式移除旧记录。
 
-Removing a global record also requires Step-up and affects every user who
-depends on that global trust record. Per-user trust can still take precedence
-for the same effective host identity.
+移除全局记录同样需要步进验证，并且会影响所有依赖该全局
+信任记录的用户。对于同一有效主机身份，每用户信任仍可
+优先。
 
-## SSH authentication banners
+## SSH 认证横幅
 
-An SSH server can send `SSH_MSG_USERAUTH_BANNER` during authentication. The SSH
-protocol does not make this a true pre-authentication message; Paramiko exposes
-it after authentication completes. WebSSH therefore pauses immediately after
-authentication and before it opens a target shell, jump-host forwarding
-channel, tmux probe, or post-connect command.
+SSH 服务器可以在认证期间发送 `SSH_MSG_USERAUTH_BANNER`。SSH
+协议并未将其定为真正的认证前消息；Paramiko 在认证完成后才暴露
+它。因此 WebSSH 会在认证完成后立即暂停，并且在打开目标 shell、跳板主机转发
+通道、tmux 探测或连接后命令之前暂停。
 
-The browser displays the bounded, control-character-sanitized text and requires
-**Continue** or **Cancel connection**. Cancellation, browser disconnect, or a
-60-second timeout closes the transport. The audit log records the user, target,
-target/jump-host context, and accepted/declined/timed-out result. It deliberately
-does not record the banner text, which is controlled by the remote server.
+浏览器会显示经过有界处理、已清洗控制字符的文本，并要求
+**Continue** 或 **Cancel connection**。取消、浏览器断开或
+60 秒超时会关闭该传输。审计日志记录用户、目标、
+目标/跳板主机上下文以及接受/拒绝/超时的结果。它有意
+不记录横幅文本，因为该文本由远程服务器控制。
 
-## Respond to a changed host key
+## 应对主机密钥变化
 
-Do not immediately delete the record and retry. A change may indicate:
+不要立即删除记录并重试。密钥变化可能表明：
 
-- a legitimate server rebuild or SSH host-key rotation;
-- DNS or IP reassignment;
-- a load balancer reaching a different host;
-- interception.
+- 服务器合法重建或 SSH 主机密钥轮换；
+- DNS 或 IP 重新分配；
+- 负载均衡器连接到了另一台主机；
+- 中间人拦截。
 
-Verify the new fingerprint out of band with the system owner. Only then revoke
-the old record and reconnect.
+请与系统所有者通过带外方式验证新指纹。只有在
+那之后才吊销旧记录并重新连接。
 
-## Network and SSRF policy
+## 网络与 SSRF 策略
 
-`BLOCK_INTERNAL_SSH=true` blocks loopback, link-local, private, reserved, and
-other unsafe destinations after DNS resolution. The production profile requires
-this protection.
+`BLOCK_INTERNAL_SSH=true` 在 DNS 解析之后阻止回环、链路本地、私有、保留以及
+其他不安全的目标地址。生产配置文件要求
+启用该保护。
 
-The homelab profile defaults to false because private addresses are often the
-intended targets. If untrusted users can access the instance, private-target
-access turns WebSSH into a powerful network pivot. Isolate the instance or
-enforce a reviewed target policy.
+家庭实验室配置文件默认值为 false，因为私有地址往往正是
+预期目标。如果不受信任的用户可以访问该实例，访问私有目标
+会使 WebSSH 变成强大的网络跳板。请隔离该实例或
+实施经过审查的目标策略。
 
-DNS results are validated. ProxyJump normally uses locally validated target
-resolution. `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` permits only exact hostnames that a
-trusted bastion must resolve remotely; wildcards and IP literals are rejected.
+DNS 结果会被校验。ProxyJump 通常使用本地校验的目标
+解析。`PROXY_JUMP_REMOTE_DNS_ALLOWLIST` 仅允许受信任的堡垒机
+必须远程解析的精确主机名；通配符和 IP 字面量会被拒绝。
 
-## Jump hosts
+## 跳板主机
 
-Save a jump host once and reference it from profiles. A jump host can have its
-own hostname, port, remote username, and authentication method.
+保存一次跳板主机即可在多个配置文件中引用它。跳板主机可以拥有
+自己的主机名、端口、远程用户名和认证方式。
 
-WebSSH opens the target through Paramiko's existing bounded channel helpers.
-The UI marks a connection as routed through the selected bastion. Deleting or
-changing a referenced jump host can affect saved profiles, so verify dependents
-before removal.
+WebSSH 通过 Paramiko 现有的有界通道辅助函数打开目标。
+UI 会将连接标记为经由所选堡垒机路由。删除或
+修改被引用的跳板主机可能影响已保存的配置文件，因此请在移除前先核实
+依赖项。
 
-## Connection ownership
+## 连接所有权
 
-Every live SSH session is owned by one WebSSH user. Socket.IO input, resize,
-disconnect, SFTP, diagnostics, and transfer operations authenticate the browser
-session and verify resource ownership.
+每个活动 SSH 会话都归属于一个 WebSSH 用户。Socket.IO 的输入、调整尺寸、
+断开、SFTP、诊断与传输操作都会认证浏览器
+会话并校验资源所有权。
 
-Terminal output is emitted to the owning user's private room. Lock, deletion,
-logout, and LDAP revalidation close tracked resources.
+终端输出会被发送到所属用户的私有房间。锁定、删除、
+登出以及 LDAP 重新校验都会关闭被跟踪的资源。
 
-## Capacity and rate limits
+## 容量与速率限制
 
-Defaults:
+默认值：
 
-- 10 concurrent SSH sessions globally;
-- 5 per user;
-- 10 SSH or quick-connect attempts per minute per user;
-- 12 temporary SSH/SFTP connections globally;
-- 3 temporary connections per user.
+- 全局 10 个并发 SSH 会话；
+- 每用户 5 个；
+- 每用户每分钟 10 次 SSH 或快速连接尝试；
+- 全局 12 个临时 SSH/SFTP 连接；
+- 每用户 3 个临时连接。
 
-All counters are process-local and rely on the mandatory single-worker model.
+所有计数器都是进程本地的，并依赖强制的单 worker 模型。
 
-## Troubleshooting
+## 故障排查
 
-### Connection times out
+### 连接超时
 
-Check DNS, routing, firewall rules, target port, jump-host reachability, and the
-container network. Confirm the target is not blocked by network policy.
+检查 DNS、路由、防火墙规则、目标端口、跳板主机可达性以及
+容器网络。确认目标未被网络策略阻止。
 
-### Authentication fails
+### 认证失败
 
-Verify the remote username and selected method. For keys, check the public key
-is installed for that remote user and the private-key format is supported. For
-a jump host, distinguish bastion authentication from target authentication.
+核实远程用户名与所选认证方式。对于密钥，请检查公钥
+是否已为该远程用户安装，以及私钥格式是否受支持。对于
+跳板主机，请区分堡垒机认证与目标认证。
 
-### The authentication banner closes the connection
+### 认证横幅关闭了连接
 
-Choose **Continue** within 60 seconds only after reviewing the remote policy.
-Cancelling, closing the browser connection, or leaving the prompt unanswered
-fails closed before a shell or startup command is opened.
+只有在查看远程策略之后，才在 60 秒内选择 **Continue**。
+取消、关闭浏览器连接或让提示一直未回答，都会在 shell 或启动命令打开之前
+安全失败（fail closed）。
 
-### Host key is rejected
+### 主机密钥被拒绝
 
-Review the trust record and verify the new fingerprint. Do not disable host-key
-verification.
+检查信任记录并验证新指纹。不要禁用主机密钥
+校验。
 
-### Connection closes while idle
+### 连接在空闲时关闭
 
-`SESSION_TIMEOUT` defaults to 1800 seconds and closes idle SSH sessions. A tmux
-session may keep the remote shell alive for later reattachment even though the
-WebSSH transport closed.
+`SESSION_TIMEOUT` 默认为 1800 秒，会关闭空闲的 SSH 会话。即使
+WebSSH 传输已关闭，tmux 会话也可能让远程 shell 继续存活，以便后续重新附加。
 
-## Related pages
+## 相关页面
 
-- [Profiles, Jump Hosts and Commands](Profiles-Jump-Hosts-and-Commands)
-- [Terminal and Persistent tmux Sessions](Terminal-and-Persistent-tmux-Sessions)
-- [Security Model and Hardening](Security-Model-and-Hardening)
+- [配置文件、跳板主机与命令](Profiles-Jump-Hosts-and-Commands)
+- [终端与持久 tmux 会话](Terminal-and-Persistent-tmux-Sessions)
+- [安全模型与加固](Security-Model-and-Hardening)

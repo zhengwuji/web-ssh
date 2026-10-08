@@ -1,11 +1,11 @@
-# Reverse Proxy and Subfolder Deployment
+# 反向代理与子目录部署
 
-WebSSH uses regular HTTP routes plus Socket.IO/WebSocket traffic. A reverse
-proxy must preserve the public origin and support connection upgrades.
+WebSSH 使用常规 HTTP 路由以及 Socket.IO/WebSocket 流量。反向代理必须保留
+公开源（origin）并支持连接升级。
 
-## Required application settings
+## 必需的应用程序设置
 
-For one trusted proxy layer:
+对于单个受信任代理层：
 
 ```bash
 CORS_ORIGINS=https://ssh.example.com
@@ -13,10 +13,10 @@ SESSION_COOKIE_SECURE=true
 TRUSTED_PROXIES=1
 ```
 
-`TRUSTED_PROXIES` is the number of trusted forwarding layers, not a Boolean.
-Keep the WebSSH backend reachable only through those layers.
+`TRUSTED_PROXIES` 是受信任转发层的数量，而不是布尔值。
+请确保 WebSSH 后端只能通过这些层访问。
 
-## Nginx at the domain root
+## 位于域名根路径的 Nginx
 
 ```nginx
 location / {
@@ -31,7 +31,7 @@ location / {
 }
 ```
 
-## Traefik at the domain root
+## 位于域名根路径的 Traefik
 
 ```yaml
 labels:
@@ -41,7 +41,7 @@ labels:
   - "traefik.http.services.webssh.loadbalancer.server.port=5000"
 ```
 
-## Caddy at the domain root
+## 位于域名根路径的 Caddy
 
 ```caddyfile
 ssh.example.com {
@@ -49,11 +49,11 @@ ssh.example.com {
 }
 ```
 
-## Apache at the domain root
+## 位于域名根路径的 Apache
 
-Apache httpd 2.4.47 or newer can proxy HTTP and WebSocket upgrades through
-`mod_proxy_http`. Enable `mod_proxy`, `mod_proxy_http`, `mod_headers`, and
-`mod_ssl`, then use a TLS virtual host such as:
+Apache httpd 2.4.47 或更高版本可以通过 `mod_proxy_http` 代理 HTTP 和 WebSocket
+升级。启用 `mod_proxy`、`mod_proxy_http`、`mod_headers` 和 `mod_ssl`，
+然后使用如下 TLS 虚拟主机：
 
 ```apache
 <VirtualHost *:443>
@@ -70,13 +70,12 @@ Apache httpd 2.4.47 or newer can proxy HTTP and WebSocket upgrades through
 </VirtualHost>
 ```
 
-Older Apache versions require `mod_proxy_wstunnel` and an explicit WebSocket
-rule. Prefer a supported 2.4.47+ release so HTTP and upgrade traffic share the
-same mapping.
+较旧的 Apache 版本需要 `mod_proxy_wstunnel` 以及一条显式的 WebSocket 规则。
+请优先使用受支持的 2.4.47+ 版本，以便 HTTP 与升级流量共用同一映射。
 
-## Serve WebSSH under a path prefix
+## 在路径前缀下提供 WebSSH
 
-For a public URL such as `https://server.example.com/webssh`, configure:
+对于诸如 `https://server.example.com/webssh` 这样的公开 URL，请配置：
 
 ```bash
 APPLICATION_ROOT=/webssh
@@ -85,10 +84,10 @@ CORS_ORIGINS=https://server.example.com
 SESSION_COOKIE_SECURE=true
 ```
 
-The reverse proxy must strip `/webssh` before forwarding the request and send
-the original prefix as `X-Forwarded-Prefix`.
+反向代理必须在转发请求之前剥离 `/webssh`，并将原始前缀通过
+`X-Forwarded-Prefix` 发送。
 
-### Nginx subfolder
+### Nginx 子目录
 
 ```nginx
 location /webssh/ {
@@ -104,9 +103,9 @@ location /webssh/ {
 }
 ```
 
-The trailing slash in both `location` and `proxy_pass` is intentional.
+`location` 和 `proxy_pass` 中的结尾斜杠都是有意的。
 
-### Traefik subfolder
+### Traefik 子目录
 
 ```yaml
 labels:
@@ -118,7 +117,7 @@ labels:
   - "traefik.http.services.webssh.loadbalancer.server.port=5000"
 ```
 
-### Caddy subfolder
+### Caddy 子目录
 
 ```caddyfile
 server.example.com {
@@ -130,10 +129,10 @@ server.example.com {
 }
 ```
 
-### Apache subfolder
+### Apache 子目录
 
-Enable `mod_alias` in addition to the modules used above. Redirect the missing
-trailing slash and forward the public prefix explicitly:
+除上述模块外，还需启用 `mod_alias`。重定向缺失的结尾斜杠，
+并显式转发公开前缀：
 
 ```apache
 RedirectMatch permanent "^/webssh$" "/webssh/"
@@ -146,41 +145,41 @@ ProxyPass "/webssh/" "http://127.0.0.1:5000/" upgrade=websocket
 ProxyPassReverse "/webssh/" "http://127.0.0.1:5000/"
 ```
 
-Keep the trailing slash on both proxy paths. Set `APPLICATION_ROOT=/webssh` in
-WebSSH as shown above.
+请同时在两条代理路径上保留结尾斜杠。并按上文所示在 WebSSH 中设置
+`APPLICATION_ROOT=/webssh`。
 
-## Containerized proxy
+## 容器化代理
 
-When the proxy runs in Docker:
+当代理运行在 Docker 中时：
 
-1. Attach WebSSH and the proxy to a private shared network.
-2. Remove public port publishing from WebSSH.
-3. Proxy to `webssh:5000` over the private network.
-4. Set `TRUSTED_PROXIES` to the real number of trusted layers.
+1. 将 WebSSH 和代理接入同一个私有共享网络。
+2. 移除 WebSSH 的公开端口发布。
+3. 通过私有网络代理到 `webssh:5000`。
+4. 将 `TRUSTED_PROXIES` 设为受信任层的真实数量。
 
-Do not publish `5000:5000` in parallel with the HTTPS proxy. That would allow
-clients to bypass TLS and possibly the trusted-proxy boundary.
+不要在启用 HTTPS 代理的同时并行发布 `5000:5000`。那会让客户端绕过 TLS，
+并可能绕过受信任代理边界。
 
-## WebSocket symptoms
+## WebSocket 症状
 
-If login works but terminal activity disconnects or never starts:
+如果登录正常但终端活动断开或始终无法启动：
 
-- confirm HTTP/1.1 on the upstream connection;
-- confirm `Upgrade` and `Connection` forwarding;
-- inspect browser network requests to `/socket.io/`;
-- check that the proxy timeout accommodates long-lived connections;
-- verify that the prefix is applied consistently for both HTTP and Socket.IO;
-- verify `CORS_ORIGINS` exactly matches the browser-visible origin, including
-  the scheme and non-default port.
+- 确认上游连接使用 HTTP/1.1；
+- 确认已转发 `Upgrade` 和 `Connection`；
+- 检查浏览器对 `/socket.io/` 的网络请求；
+- 检查代理超时是否足以容纳长连接；
+- 验证该前缀在 HTTP 和 Socket.IO 上被一致地应用；
+- 验证 `CORS_ORIGINS` 与浏览器可见的源完全匹配，包括
+  协议方案和非默认端口。
 
-## Trusted client addresses
+## 受信任的客户端地址
 
-WebSSH uses forwarded addresses only within the configured proxy trust depth.
-An incorrect value can either record the proxy address instead of the client or
-trust attacker-supplied forwarding headers. Prefer a simple topology and keep
-the backend network private.
+WebSSH 仅在配置的代理信任深度内使用转发地址。
+取值不正确时，要么记录代理地址而非客户端地址，要么
+信任攻击者提供的转发头。请优先采用简单拓扑，并保持
+后端网络私有。
 
-## Validation
+## 验证
 
 ```bash
 curl -I https://ssh.example.com/
@@ -188,7 +187,7 @@ curl -fsS https://ssh.example.com/health
 curl -fsS https://ssh.example.com/ready
 ```
 
-For a subfolder:
+对于子目录：
 
 ```bash
 curl -I https://server.example.com/webssh/
@@ -196,5 +195,5 @@ curl -fsS https://server.example.com/webssh/health
 curl -fsS https://server.example.com/webssh/ready
 ```
 
-Complete the check in a browser by logging in, opening a terminal, resizing it,
-and transferring a small file.
+在浏览器中完成检查：登录、打开终端、调整其大小，
+并传输一个小文件。

@@ -1,342 +1,322 @@
-# SFTP and SMB File Workspace and Transfers
+# SFTP 与 SMB 文件工作区及传输
 
-The File Workspace uses SFTP over SSH and can optionally open temporary SMB
-shares. SFTP can reuse active terminal sessions, open saved SSH hosts, or
-create temporary SFTP-only connections.
+文件工作区通过 SSH 使用 SFTP，并可选地打开临时 SMB
+共享。SFTP 可以复用活动终端会话、打开已保存的 SSH 主机，或
+创建仅 SFTP 的临时连接。
 
-## Sources and tabs
+## 源（source）与标签页
 
-The source launcher offers:
+源启动器提供：
 
-- an active SSH session;
-- a saved SSH profile;
-- a new SFTP quick connection;
-- an ephemeral SMB share when the administrator enables SMB.
+- 一个活动 SSH 会话；
+- 一个已保存的 SSH 配置文件；
+- 一个新的 SFTP 快速连接；
+- 当管理员启用 SMB 时的临时 SMB 共享。
 
-Each side has independent source tabs and directory state. The workspace starts
-with one file area and can switch to a side-by-side layout for remote-to-remote
-work. A source already open on the opposite side is not silently duplicated.
+每一侧都有独立（independent）的源标签页与目录状态。工作区初始
+只有一个文件区域，可以切换到并排布局以进行远程到远程的
+操作。已在对面一侧打开的源不会被静默重复打开。
 
-SMB is opt-in and remains disabled with `SMB_ENABLED=false`. Enabling it
-requires a non-empty `SMB_ALLOWED_TARGETS` list containing exact server
-hostnames or IP addresses. The server field is resolved and checked against
-that allowlist before a connection is opened. SMB always uses TCP 445 and
-requires SMB 3.1.1, signing, encryption, and secure negotiation. The current
-authentication mode is NTLM. Guest or null sessions, DFS, Kerberos,
-administrative shares, reparse-point traversal, and automatic reconnect are
-not supported.
+SMB 是选择性加入的，并在 `SMB_ENABLED=false` 时保持禁用。启用它
+需要非空的 `SMB_ALLOWED_TARGETS` 列表，其中包含精确的服务器
+主机名或 IP 地址。服务器字段会在打开连接之前被解析并对照该
+允许列表进行检查。SMB 始终使用 TCP 445，并要求 SMB 3.1.1、签名（signing）、加密（encryption）与安全协商。当前的
+认证模式是 NTLM。不支持访客（guest）或空会话、DFS、Kerberos、
+管理共享、重解析点遍历以及自动重连（automatic reconnect）。
 
-The SMB dialog sends the password only for the requested temporary connection;
-passwords and authentication secrets are never stored by WebSSH. Users may save
-non-secret, per-user share definitions containing a display name, host, share,
-domain, and username. Closing a source's final tab closes the connection after
-any dependent transfer finishes. An application restart also removes all active
-SMB sources.
+SMB 对话框仅会为所请求的临时连接发送密码；
+密码与认证机密绝不会被 WebSSH 存储（never stored）。用户可以保存
+非机密的、每用户共享定义，包含显示名称、主机、共享、
+域与用户名。关闭某个源的最后一个标签页会在
+所有依赖传输完成之后关闭该连接。应用重启也会移除所有活动的
+SMB 源。
 
-For Active Directory or TrueNAS, first try the DNS domain such as `example.com`
-in the domain field with an account name such as `alice`. Alternatively, leave
-the domain field empty and use a UPN such as `alice@example.com`. NetBIOS domain
-names may not be accepted by every server.
+对于 Active Directory 或 TrueNAS，请先在域字段中尝试诸如 `example.com` 的 DNS 域，
+并使用诸如 `alice` 的账号名。或者，留空
+域字段并使用诸如 `alice@example.com` 的 UPN。NetBIOS 域
+名可能无法被每台服务器接受。
 
-After authentication, WebSSH performs a non-mutating access inspection at the
-share root. It separately records whether listing, file creation, directory
-creation, and child deletion are granted, denied, or unknown. The workspace
-shows confirmed write access, confirmed root read-only access, or unknown root
-write access. This is evidence for the root only: ACLs on nested directories
-can be more or less restrictive, so every operation still handles a remote
-denial explicitly.
+认证之后，WebSSH 会在共享根目录执行一次非变更性的访问检查。它会分别记录列出、创建文件、创建目录
+以及删除子项是被授予、被拒绝还是未知。工作区
+显示已确认的写访问、已确认的根只读访问，或未知的根
+写访问。这只是根目录的证据：嵌套目录上的 ACL
+可能更严格或更宽松，因此每个操作仍然会显式处理远程
+拒绝。
 
-Connection failures show a sanitized reason in the SMB dialog. Failures that
-reach the server-side connection job also include a reference in the form
-`SMB-A1B2C3D4E5F6`; an operator can correlate it with `DATA_DIR/logs/app.log`
-without exposing the backend exception text to the browser. The log record
-separates target resolution, transport negotiation, security requirements,
-session authentication, share access, and lifecycle handling, and can include
-the exception class and SMB NT status when safely available.
+连接失败会在 SMB 对话框中显示经过清洗的原因。到达
+服务器端连接作业的失败还会包含形式为
+`SMB-A1B2C3D4E5F6` 的引用；运维人员可以用它对照 `DATA_DIR/logs/app.log`
+进行关联，而不会把后端异常文本暴露给浏览器。日志记录
+区分目标解析、传输协商、安全要求、
+会话认证、共享访问与生命周期处理，并可在安全可用时包含
+异常类与 SMB NT 状态。
 
-Browser TLS and SMB encryption protect different links. TLS covers the browser
-to WebSSH, while SMB encryption covers WebSSH to the share. The WebSSH process
-must handle the submitted credentials and file contents, so deploy it on a
-trusted host and allowlist only trusted SMB servers. This is not end-to-end
-encryption between the browser and the share.
+浏览器 TLS 与 SMB 加密（encryption）保护不同的链路。TLS 覆盖浏览器
+到 WebSSH，而 SMB 加密覆盖 WebSSH 到共享。WebSSH 进程（WebSSH process）
+必须处理提交的凭据与文件内容（file contents），因此请将其部署在
+受信任的主机上，并仅将受信任的 SMB 服务器加入允许列表。这不是浏览器与共享之间的端到端
+加密。
 
-## Embedded active-session browser
+## 内嵌的活动会话浏览器（browser）
 
-In the single-terminal layout, an embedded SFTP browser follows the active SSH
-session. Its state is separate from the standalone File Workspace, so switching
-terminal sessions does not overwrite independent workspace tabs.
+在单终端布局中，内嵌的 SFTP 浏览器（browser）会跟随活动 SSH
+会话。它的状态与独立的文件工作区分离，因此切换
+终端会话不会覆盖独立（independent）的工作区标签页。
 
-WebSSH probes SFTP availability for the selected session before showing the
-embedded browser. Manual dismissal is retained for that session, and changing
-viewport size keeps the mounted browser state instead of opening another
-connection. Disconnecting the selected SSH session removes only its embedded
-source; independent File Workspace tabs remain intact.
+WebSSH 会在显示内嵌浏览器之前，为所选会话探测 SFTP 可用性。
+手动关闭会针对该会话被保留，而更改
+视口尺寸会保留已挂载的浏览器状态，而不是打开另一个
+连接。断开所选 SSH 会话只会移除其内嵌
+源；独立（independent）的文件工作区标签页保持完好。
 
-## File operations
+## 文件操作
 
-Supported operations include:
+支持的操作包括：
 
-- directory listing and navigation;
-- create directory;
-- rename;
-- move files or folders on the same source with the pane's **Move…** action and
-  folder picker, or by dragging them onto a destination folder in the current
-  File Workspace pane, the embedded active-session SFTP browser, or the other
-  pane;
-- delete;
-- drag-and-drop file and folder upload;
-- single and batch download;
-- folder download as ZIP;
-- server-to-server copy;
-- existence and stat checks;
-- image and syntax-highlighted text preview;
-- log tail preview;
-- inline text editing and save;
-- selection and context-menu actions.
+- 目录列出与导航；
+- 创建目录；
+- 重命名；
+- 使用窗格的 **Move…** 操作与文件夹选择器在同一源上移动文件或文件夹，
+  或通过将其拖放到当前
+  文件工作区窗格、内嵌的活动会话 SFTP 浏览器或另一个
+  窗格中的目标文件夹来完成移动；
+- 删除；
+- 拖放式文件与文件夹上传；
+- 单个与批量下载；
+- 以 ZIP 下载文件夹；
+- 服务器到服务器（server-to-server）复制；
+- 存在性与 stat 检查；
+- 图片与语法高亮文本预览；
+- 日志尾部预览；
+- 内联文本编辑与保存；
+- 选择与上下文菜单操作。
 
-All operations authenticate the WebSSH user, resolve the opaque source ID
-server-side, verify source ownership, and enforce the named capability before
-touching SFTP or SMB.
+所有操作都会认证 WebSSH 用户、在服务器端解析不透明的源 ID（source ID）、
+校验源所有权，并在触及 SFTP 或 SMB 之前强制执行具名能力（capability）。
 
-## Transfer architecture
+## 传输架构
 
 ![WebSSH realtime session and bulk transfer lifecycle showing transfer records, single-use tokens, HTTP streams, and bounded jobs](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/session-and-transfer-lifecycle.png?raw=true)
 
-The control record retains user and connection ownership while the body path
-uses a short-lived token. This separation keeps large payloads away from the
-Socket.IO terminal channel without weakening cancellation, quota, or lifecycle
-tracking.
+控制记录保留用户与连接所有权，而正文路径
+使用一个短期令牌。这种分离使大型载荷远离
+Socket.IO 终端通道，同时不削弱取消、配额或生命周期
+跟踪。
 
-Large file bodies do not travel as base64 Socket.IO messages. Socket.IO creates
-bounded control state and single-use user-bound transfer tokens. HTTP routes
-stream upload, download, and folder archives.
+大型文件正文不会作为 base64 Socket.IO 消息传输。Socket.IO 创建
+有界的控制状态与一次性、绑定用户的传输令牌。HTTP 路由
+负责流式上传、下载与文件夹归档。
 
-The body routes are:
+正文路由为：
 
-- `POST /api/transfers/<token>/upload` for streamed uploads;
-- `GET /api/transfers/<token>/download` for streamed file downloads;
-- `GET /api/transfers/<token>/folder-download` for bounded folder archives.
+- `POST /api/transfers/<token>/upload` 用于流式上传；
+- `GET /api/transfers/<token>/download` 用于流式文件下载；
+- `GET /api/transfers/<token>/folder-download` 用于有界文件夹归档。
 
-Downloads intentionally do not implement HTTP byte ranges. A request carrying
-`Range` still receives the complete `200` response and `Accept-Ranges: none`.
-The server opens the remote file once before creating the response, obtains the
-security-relevant size from that same handle, and keeps that handle for the
-whole stream. Renaming or replacing the pathname while a response is active
-therefore cannot switch the stream to another object.
+下载有意不实现 HTTP 字节范围。带有
+`Range` 的请求仍会收到完整的 `200` 响应与 `Accept-Ranges: none`。
+服务器在创建响应之前只打开一次远程文件，从同一句柄获取
+与安全相关的大小，并为整个流保持该句柄。因此，在响应处于活动状态时重命名或替换路径名
+无法把该流切换到另一个对象。
 
-Server-to-server work runs as a bounded cancellable background job. The
-transfer queue tracks progress, errors, cancellation, and conflict choices such
-as skip or overwrite.
+服务器到服务器（server-to-server）的工作以有界、可取消的后台作业运行。传输队列（transfer queue）跟踪进度、错误、取消与诸如跳过或覆盖之类的冲突选择。
 
-An SMB source maintains separate control and transfer sessions. Directory
-navigation and metadata operations therefore remain available while a bulk
-upload, download, or remote copy is using the transfer lane. Cancellation is
-one idempotent request: the queue changes to **Cancelling** once and waits for
-the authoritative terminal event instead of requiring repeated clicks.
+SMB 源维护独立的控制会话与传输会话。因此，在批量
+上传、下载或远程复制正在使用传输通道时，目录
+导航与元数据操作仍然可用。取消是
+一个幂等请求：队列只会变为 **Cancelling** 一次，并等待
+权威的终态事件，而不需要反复点击。
 
-HTTP responses, Socket.IO terminal events, notifications, and queue rows use
-the same allowlisted transfer failure contract. The visible reason distinguishes
-permission denial, an existing destination, a missing path, an unavailable
-share or source, a timeout, a configured limit, cancellation, and unavailable
-atomic replacement. Backend exception text, paths, and credentials are not
-reflected to the browser.
+HTTP 响应、Socket.IO 终端事件、通知与队列行使用
+相同的、加入允许列表的传输失败契约。可见原因会区分
+权限拒绝、已存在的目标、缺失的路径、不可用的
+共享或源、超时、已配置的限制、取消以及不可用的
+原子替换。后端异常文本、路径与凭据不会
+回显给浏览器。
 
-When the browser or server knows the actual byte count, configured-limit
-errors include the operation, actual size, and exact limit. Unknown or
-untrusted sizes are never guessed.
+当浏览器或服务器知道实际字节数时，已配置限制
+错误会包含操作、实际大小与精确限制。未知或
+不受信任的大小绝不会被猜测。
 
-Uploads and server-to-server copies start with a no-overwrite policy. If the
-destination exists, the workspace asks whether to replace, skip, or cancel and
-can apply that choice to the remaining batch. Replace uses a new authorized
-transfer request and an atomic backend rename. If atomic replacement is not
-available, the existing destination remains untouched and the queue explains
-why the replacement was refused.
+上传与服务器到服务器（server-to-server）复制以不覆盖策略开始。如果
+目标已存在，工作区会询问是替换、跳过还是取消，并
+可将该选择应用到剩余批次。替换使用新的已授权
+传输请求与原子后端重命名。如果原子替换不可
+用，现有目标保持不变，队列会说明
+替换被拒绝的原因。
 
-Queued and active transfers retain references to their source and destination
-connections. Closing the last quick-connection tab defers disconnect until the
-dependent transfer reaches a terminal state.
+排队中与活动中的传输会保留对其源与目标
+连接的引用。关闭最后一个快速连接标签页会将断开延迟到
+依赖传输达到终态之后。
 
-## Limits
+## 限制
 
-| Variable | Default | Meaning |
-|---|---:|---|
-| `MAX_DOWNLOAD_SIZE` | 100 MiB | Maximum single file download |
-| `MAX_ZIP_DOWNLOAD_SIZE` | 500 MiB | Maximum generated folder archive |
-| `MAX_TRANSFER_MEMBERS` | 10,000 | Maximum traversed entries |
-| `MAX_PREVIEW_SIZE` | 512,000 bytes | Maximum preview content in memory |
-| `MAX_PREVIEW_TAIL_LINES` | 10,000 | Maximum requested tail lines |
-| `MAX_SUPPORTED_FILE_SIZE` | 1 GiB | Maximum remote file size accepted by preview service |
-| `MAX_EDITOR_FILE_SIZE` | 5 MiB | Maximum inline-edited file size |
-| `SFTP_OPERATION_TIMEOUT` | 30 seconds | Timeout per SFTP channel operation |
-| `TRANSFER_TEMP_DIR` | `DATA_DIR/tmp` | Private fallback archive directory |
+| 变量 | 默认值 | 含义 |
+|---|---|---|
+| `MAX_DOWNLOAD_SIZE` | 100 MiB | 单个文件下载上限 |
+| `MAX_ZIP_DOWNLOAD_SIZE` | 500 MiB | 生成的文件夹归档上限 |
+| `MAX_TRANSFER_MEMBERS` | 10,000 | 遍历条目上限 |
+| `MAX_PREVIEW_SIZE` | 512,000 bytes | 内存中预览内容上限 |
+| `MAX_PREVIEW_TAIL_LINES` | 10,000 | 请求的尾部行数上限 |
+| `MAX_SUPPORTED_FILE_SIZE` | 1 GiB | 预览服务接受的远程文件大小上限 |
+| `MAX_EDITOR_FILE_SIZE` | 5 MiB | 内联编辑文件大小上限 |
+| `SFTP_OPERATION_TIMEOUT` | 30 seconds | 每次 SFTP 通道操作超时 |
+| `TRANSFER_TEMP_DIR` | `DATA_DIR/tmp` | 私有回退归档目录 |
 
-Default transfer quotas are 8 records globally and 2 per user. Background jobs
-default to 4 globally and 1 per user. Temporary-byte reservations default to
-1 GiB globally and 512 MiB per user.
+默认传输配额为全局 8 条记录、每用户 2 条。后台作业
+默认全局 4 个、每用户 1 个。临时字节预留默认
+全局 1 GiB、每用户 512 MiB。
 
-## Folder downloads
+## 文件夹下载
 
-WebSSH prefers bounded streaming and uses private temporary storage only where
-the archive path requires it. Size, member, timeout, ownership, and temporary
-byte quotas apply. Symlinks and unsafe traversal are not followed as arbitrary
-host filesystem paths.
+WebSSH 优先采用有界流式处理，仅在归档路径需要时使用私有临时
+存储。大小、成员、超时、所有权与临时
+字节配额均适用。符号链接与不安全的遍历不会被当作任意
+主机文件系统路径来跟随。
 
-## Preview and editor safety
+## 预览与编辑器安全性
 
-Preview loads only bounded content. Tail mode limits requested line count. The
-editor refuses files above its size cap and saves through the resolved, owned
-file source.
+预览只加载有界内容。尾部模式会限制请求的行数。编辑器会拒绝超过其大小上限的文件，并通过已解析、有归属的
+文件源进行保存。
 
-Preview, editor, download, archive, and server-to-server reads bind their byte
-limits to the already-open remote object. SFTP obtains size and type through
-handle `fstat`; SMB uses the SMB2 CREATE response and rejects directory or
-reparse-point handles. Observed bytes remain capped as a second guard if a file
-grows after it was opened. Path metadata is not reused to authorize bytes from
-a later open.
+预览、编辑器、下载、归档与服务器到服务器（server-to-server）读取都会将其字节
+限制绑定到已打开的远程对象。SFTP 通过句柄 `fstat` 获取大小与类型；SMB 使用 SMB2 CREATE 响应，并拒绝目录或
+重解析点句柄。如果文件在被打开之后继续增长，观测到的字节仍会作为第二道防护被限制。路径元数据不会被复用来为后续打开产生的字节
+授权。
 
-For SFTP, the remote SSH account and server configuration define which paths
-are reachable; WebSSH does not add a virtual allowed-folder boundary. Deploy
-`internal-sftp` with a server-side chroot when a user must be confined to one
-subtree. Handle binding prevents a later pathname swap, but it is not a
-replacement for server-side filesystem confinement.
+对于 SFTP，远程 SSH 账号与服务器配置决定了哪些路径
+可达；WebSSH 不会额外添加虚拟的允许文件夹边界。当必须把用户限制在单个
+子树中时，请部署带有服务器端 chroot 的
+`internal-sftp`。句柄绑定可防止后续的路径名替换，但它不能
+取代服务器端文件系统隔离。
 
-Text saves carry the revision that was previewed and reject stale content.
-Atomic replacement is the default. If an SMB account cannot provide it, the
-editor asks for explicit consent before using a recoverable swap that keeps a
-backup until the new file is in place. A failed rollback leaves named temporary
-and backup artifacts in the error so an operator can recover the content; the
-dirty editor buffer remains open.
+文本保存会携带被预览时的修订版本，并拒绝陈旧内容。
+原子替换是默认行为。如果 SMB 账号无法提供它，
+编辑器会在使用可恢复交换之前请求显式同意，该交换会保留一个
+备份，直到新文件就位。回滚失败会在错误中留下具名临时
+与备份产物，以便运维人员恢复内容；处于脏状态的编辑器缓冲区保持打开。
 
-Treat remote content as untrusted. Previewing or editing a file does not make
-its commands safe to execute.
+请将远程内容视为不受信任。预览或编辑文件并不会使其
+命令变得安全可执行。
 
-## Server-to-server copy
+## 服务器到服务器（server-to-server）复制
 
-Open source and destination in the two file areas, select items, and start the
-copy. The server reads from one SFTP or SMB source and writes to the other
-without routing the entire payload through the browser. The same bounded engine
-covers SFTP-to-SFTP, SFTP-to-SMB, SMB-to-SFTP, and SMB-to-SMB copies.
+在两个文件区域中打开源与目标，选择条目，然后开始
+复制。服务器从一个 SFTP 或 SMB 源读取，并写入另一个，
+而不将整个载荷经由浏览器路由。同一个有界引擎
+覆盖 SFTP 到 SFTP、SFTP 到 SMB、SMB 到 SFTP 以及 SMB 到 SMB 复制。
 
-Both connections remain owned by the same WebSSH user, both count against
-capacity, and cancellation is tied to the server-owned transfer record.
-Existing targets are not overwritten without the conflict decision described
-above.
+两个连接仍归同一个 WebSSH 用户所有，都会计入
+容量，并且取消与服务器拥有的传输记录绑定。
+未按上述冲突决策处理时，现有目标不会被覆盖。
 
-For two folders on the same source, the workspace offers **Move** instead of a
-copy. It uses the source's rename operation, refuses root, self, descendant,
-and existing-destination moves, and never replaces an existing item. SMB path
-relationship checks are case-insensitive.
+对于同一源上的两个文件夹，工作区提供 **Move** 而非
+复制。它使用源的 rename 操作，拒绝根、自身、后代
+以及已存在目标的移动，并且绝不替换已存在的条目。SMB 路径
+关系检查不区分大小写。
 
-The **Move…** action is available in both the standalone File Workspace and the
-embedded active-session SFTP browser. Its picker shows folders from the same
-authorized source only and revalidates the original selection before sending
-the correlated rename requests.
+**Move…** 操作在独立的文件工作区与
+内嵌的活动会话 SFTP 浏览器中都可用。其选择器只显示来自同一
+已授权源（source）的文件夹，并在发送相关的重命名请求之前重新校验原始选择。
 
-## Connection lifecycle
+## 连接生命周期
 
-- Active terminal-backed sources follow the SSH session lifetime.
-- Quick sources use the bounded temporary connection pool.
-- Closing a tab releases a quick connection only when no remaining tab or
-  queued/active transfer references it.
-- Disconnect events remove all matching stale workspace tabs while preserving
-  unrelated tabs.
+- 由终端支撑的活动源跟随 SSH 会话的生命周期。
+- 快速源使用有界的临时连接池。
+- 关闭标签页只有在没有任何剩余标签页或
+  排队/活动传输引用它时，才释放一个快速连接。
+- 断开事件会移除所有匹配的陈旧工作区标签页，同时保留
+  无关标签页。
 
-## Troubleshooting
+## 故障排查
 
-### Source list is empty
+### 源列表为空
 
-Open an SSH session, create a saved profile, or choose a new SFTP quick
-connection.
+打开一个 SSH 会话、创建一个已保存的配置文件，或选择一个新 SFTP 快速
+连接。
 
-### Upload or download is rejected immediately
+### 上传或下载被立即拒绝
 
-Check file-size, member, quota, rate, and token-expiry limits. Confirm the source
-session is still connected.
+检查文件大小、成员、配额、速率与令牌过期限制。确认源
+会话仍处于连接状态。
 
-### Transfer waits after closing a tab
+### 关闭标签页后传输仍在等待
 
-This can be intentional. WebSSH retains the quick connection until queued or
-active transfer references terminalize.
+这可能有意的。WebSSH 会保留该快速连接，直到排队中或
+活动中的传输引用进入终态。
 
-### Preview refuses a large file
+### 预览拒绝大文件
 
-Use a direct bounded download or tail mode. Preview and inline editing have
-lower memory-oriented limits than raw transfer.
+请使用有界的直接下载或尾部模式。预览与内联编辑的
+内存相关限制低于原始传输。
 
-### Server-to-server copy fails
+### 服务器到服务器复制失败
 
-Verify both sides are connected, writable, and owned by the same WebSSH user.
-Check background-job and transfer quotas plus the target conflict policy.
+核实两侧都已连接、可写，并且归同一个 WebSSH 用户所有。
+检查后台作业与传输配额以及目标冲突策略。
 
-## Related pages
+## 相关页面
 
-- [SSH Connections and Host Keys](SSH-Connections-and-Host-Keys)
-- [Configuration Reference](Configuration-Reference)
-- [Security Model and Hardening](Security-Model-and-Hardening)
+- [SSH 连接与主机密钥](SSH-Connections-and-Host-Keys)
+- [配置参考](Configuration-Reference)
+- [安全模型与加固](Security-Model-and-Hardening)
 
-## Sync the Workspace file browser with the terminal
+## 让工作区文件浏览器与终端同步
 
-In **Workspaces → Files**, **Synchronize folders with terminal** is enabled by
-default in the compact header above the file list. Temporary probe failures
-retry silently without adding status messages. This applies to the active
-session's embedded browser, not the separate File Manager. In
-**Settings → Preferences → Terminal**, each user can change
-**Synchronize folders with terminal by default**. The preference is stored in
-the user account and applies when opening or reloading the workspace. The
-Workspace checkbox still overrides sync per SSH session for the current page;
-switching sessions preserves those overrides.
+在 **Workspaces → Files** 中，**Synchronize folders with terminal** 在
+文件列表上方的紧凑标题栏中默认启用。临时探测失败
+会静默重试，而不添加状态消息。这适用于活动
+会话的内嵌浏览器，而不适用于独立的 File Manager。在
+**Settings → Preferences → Terminal** 中，每个用户都可以更改
+**Synchronize folders with terminal by default**。该偏好存储在
+用户账号中，并在打开或重新加载工作区时生效。工作区复选框仍会针对当前页面按 SSH 会话覆盖同步设置；
+切换会话会保留这些覆盖。
 
-Enabling sync first opens the terminal's actual working directory in Files.
-Subsequent terminal navigation (`cd`, `pushd`, aliases, or a nested shell) is
-observed from the remote process state. Opening a folder, using Up/Home, or
-entering an absolute path in the embedded browser sends a quoted `cd -- '…'`
-to that session. Selecting or previewing a file does not execute it. The browser
-then follows the observed directory, including the result of a failed `cd` or
-symlink resolution. Sync-generated input never uses broadcast mode.
+启用同步后，首先会在 Files 中打开终端实际的工作目录。
+后续终端导航（`cd`、`pushd`、别名或嵌套 shell）会
+从远程进程状态中被观测。打开文件夹、使用 Up/Home，或在
+内嵌浏览器中输入绝对路径，都会向该会话发送一条带引号的 `cd -- '…'`。
+选择或预览文件不会执行它。浏览器随后会跟随观测到的目录，包括失败的 `cd` 或
+符号链接解析的结果。同步生成的输入绝不使用广播模式。
 
-The current implementation supports Linux targets with readable `/proc`,
-`readlink`, and a `ps` implementation supporting `--ppid`, `pid`, `ppid`, `tty`,
-`tpgid`, and `comm`. For WebSSH-managed tmux sessions it resolves the active pane
-in the active window of that session. Ambiguous PTYs, inaccessible processes,
-non-Linux targets, and restricted SSH exec channels report sync as unavailable.
-No shell startup files are modified and no remote agent is installed.
+当前实现支持具有可读 `/proc`、
+`readlink` 以及支持 `--ppid`、`pid`、`ppid`、`tty`、
+`tpgid` 与 `comm` 的 `ps` 实现的 Linux 目标。对于由 WebSSH 管理的 tmux 会话，它会解析该会话
+活动窗口中的活动窗格。有歧义的 PTY、不可访问的进程、
+非 Linux 目标以及受限的 SSH exec 通道都会将同步报告为不可用。
+不会修改任何 shell 启动文件，也不会安装任何远程 agent。
 
-Files-to-terminal navigation additionally requires an empty detected shell
-prompt, bracketed paste mode, and a supported
-foreground shell (bash, zsh, fish, sh, dash, or ksh). Shells without prompt-mode
-signaling can still be followed, but automatic `cd` waits for a reliably
-detected prompt. Finish any partial command or return from an application to
-the prompt, then open the folder again. Navigation that cannot be sent safely
-is **not queued for later execution**. A blocked folder action now explains
-why it could not proceed; turn off sync to browse Files independently.
-For managed tmux sessions the outer terminal's alternate screen is expected;
-the server separately rejects copy mode and alternate-screen applications
-inside the active tmux pane. A confirmed directory change from a sync-generated
-`cd` acknowledges that command even when tmux coalesces prompt-mode signals,
-provided no user input or shell change occurred meanwhile. Unknown or replayed
-prompts and unfinished manual input remain guarded.
-On tmux servers exposing `bracket_paste_flag`, after a manual Enter or Ctrl+C,
-a fresh probe can also confirm the prompt
-once live terminal output advances to a new line. It must find a supported
-foreground shell with bracketed paste enabled **inside the pane**. This avoids
-depending on mode changes that tmux may omit from the outer terminal, and keeps
-navigation blocked while a prompt hook is still running. New typing, an active
-paste, or transcript replay invalidates this confirmation. After reconnecting
-at an unknown prompt, finish or cancel the current input to establish a live
-prompt before using Files-to-terminal navigation.
-Older tmux servers without this optional flag still support directory following
-and the existing live-prompt and sync-generated `cd` checks. They cannot use the
-additional confirmation after manual input when tmux omits the prompt signal;
-Files-to-terminal navigation remains guarded in that case.
-These are conservative UI guards, not an atomic shell protocol: custom prompt
-behavior and concurrent input from another SSH/tmux client cannot be fully
-inferred. Paths containing control characters are intentionally rejected.
+从 Files 到终端的导航还要求检测到的 shell 提示符为空、
+处于括号粘贴模式，并支持
+前台 shell（bash、zsh、fish、sh、dash 或 ksh）。没有提示符模式
+信号的 shell 仍可被跟随，但自动 `cd` 会等待一个可靠
+检测到的提示符。请完成任何部分输入的命令，或从应用程序返回到
+提示符，然后再次打开该文件夹。无法安全发送的导航
+**不会被排队等待稍后执行**。被阻止的文件夹操作现在会说明
+它为何无法继续；关闭同步即可独立浏览 Files。
+对于受管理的 tmux 会话，外层终端的备用屏幕是预期状态；
+服务器会单独拒绝活动 tmux 窗格内部的复制模式与备用屏幕应用程序。由同步生成的
+`cd` 所产生的已确认目录变更会确认该命令，即使 tmux 合并了提示符模式信号，
+前提是期间没有发生用户输入或 shell 变化。未知或重放的
+提示符以及未完成的手动输入仍会受到保护。
+在暴露 `bracket_paste_flag` 的 tmux 服务器上，在一次手动 Enter 或 Ctrl+C 之后，
+当实时终端输出推进到新行时，一次新的探测也可以确认该提示符。它必须**在窗格内部**找到一个支持括号粘贴的受支持
+前台 shell。这避免依赖 tmux 可能从外层终端省略的模式变化，并在提示符钩子仍在运行时保持
+导航被阻止。新的键入、正在进行的粘贴或会话记录重放都会使该确认失效。在未知提示符处重连之后，请完成或取消当前输入，以在使用从 Files 到终端的导航之前建立实时
+提示符。
+没有该可选标志的较旧 tmux 服务器仍支持目录跟随
+以及现有的实时提示符与同步生成的 `cd` 检查。当 tmux 省略提示符信号时，它们无法使用
+手动输入之后的额外确认；
+在这种情况下，从 Files 到终端的导航仍受到保护。
+这些是保守的 UI 防护，而不是原子 shell 协议：自定义提示符
+行为以及来自另一 SSH/tmux 客户端的并发输入无法被完全
+推断。包含控制字符的路径会被有意拒绝。
 
-The directory is sampled about every 1.5 seconds while the opted-in Workspace
-file panel is visible; folder clicks request a fresh sample. Hidden panels,
-other application views, disconnected sessions, and disabled sync stop polling.
-Unavailable targets retry with a longer delay. After identifier validation,
-requests consume the per-user rate limit before the ownership lookup. Each
-owned session allows one in-flight probe with bounded response size and a
-timeout; probes use a separate SSH exec channel without interrupting PTY output.
-There is no directory polling when sync is off.
+在已选择性加入的 Workspace
+文件面板可见时，目录大约每 1.5 秒采样一次；文件夹点击会请求一次新的采样。隐藏的面板、
+其他应用视图、已断开的会话以及已禁用的同步都会停止轮询。
+不可用的目标会以更长的延迟重试。在标识符校验之后，
+请求会在所有权查找之前消耗每用户速率限制。每个
+已归属会话允许一次进行中的探测，并具有有界响应大小与
+超时；探测使用单独的 SSH exec 通道，而不中断 PTY 输出。
+同步关闭时不会进行目录轮询。
