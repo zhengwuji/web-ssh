@@ -6,10 +6,19 @@ For an Internet-facing installation, continue with
 
 ## Prerequisites
 
-- Docker Engine with the Compose plugin, or another Docker-compatible runtime.
-- TCP port `5000` available on the host.
-- At least one SSH server that the WebSSH container can reach.
+- A supported Linux distribution (Debian/Ubuntu, RHEL/Fedora/CentOS, openSUSE,
+  Arch, or Alpine), macOS, or Windows.
+- Docker Engine with the Compose plugin, or the installer's `--mode source`
+  path, which only needs Python 3.10 or newer.
+- A free TCP port (default `5000`).
+- At least one SSH server that WebSSH can reach.
 - A modern browser.
+
+The installer detects the distribution's package manager and installs anything
+that is missing: Python, pip, the `venv` module, curl, tmux, the C toolchain and
+OpenLDAP headers needed to compile the LDAP client, and Docker with its Compose
+plugin. Pass `--skip-system-deps` to disable that and manage packages yourself,
+or `--no-install-docker` to fail instead of installing Docker.
 
 ## Option 1: One-command installer
 
@@ -32,11 +41,30 @@ Useful flags:
 ```bash
 ./install.sh --port 8443 --tls self-signed --domain webssh.lan
 ./install.sh --mode source --dir /opt/webssh --no-start
+./install.sh --mode source --from-git https://github.com/zhengwuji/web-ssh.git
 ./install.sh --allow-internal-ssh
 ```
 
 The installer is idempotent: re-running it reuses the existing `SECRET_KEY` and
 TLS material. It never prints the generated secret.
+
+### Installer commands
+
+```bash
+./install.sh status                                  # service state and /ready
+./install.sh port --port 9000                        # change the web port
+./install.sh reset-password --username admin         # reset a local password
+./install.sh reset-password --username admin --generate
+./install.sh upgrade                                 # newest image or source
+./install.sh uninstall                               # stop and remove (keeps data)
+./install.sh uninstall --purge --yes                 # remove everything
+```
+
+`port` rewrites the service configuration, the published port, and the accepted
+CORS origins, then restarts the service. `reset-password` also invalidates every
+existing browser session for that account; it reads the password interactively,
+from `--password-file`, or generates one with `--generate`. `uninstall` keeps
+`<dir>/data` unless `--purge` is given.
 
 ## Option 2: Docker Compose
 

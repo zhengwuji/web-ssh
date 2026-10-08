@@ -167,6 +167,259 @@ def test_help_documents_every_supported_mode(shell, tmp_path):
     assert '--allow-internal-ssh' in result.stdout
 
 
+def test_help_documents_every_command(shell, tmp_path):
+    result = _run(shell, ['--help'], cwd=tmp_path)
+
+    assert result.returncode == 0
+    for command in (
+        'install',
+        'upgrade',
+        'port',
+        'reset-password',
+        'status',
+        'uninstall',
+    ):
+        assert command in result.stdout
+
+
+def test_bare_invocation_still_means_install(shell, tmp_path, fake_bin):
+    target = tmp_path / 'bare-deployment'
+
+    result = _run(
+        shell,
+        ['--dir', str(target).replace('\\', '/'), '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Command: install' in result.stdout
+    assert (target / '.env').is_file()
+
+
+def test_explicit_install_command_matches_the_default(shell, tmp_path, fake_bin):
+    target = tmp_path / 'explicit-deployment'
+
+    result = _run(
+        shell,
+        [
+            'install',
+            '--dir', str(target).replace('\\', '/'),
+            '--no-start',
+        ],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Command: install' in result.stdout
+
+
+def test_unknown_command_is_rejected(shell, tmp_path):
+    result = _run(shell, ['bogus'], cwd=tmp_path)
+
+    assert result.returncode == 1
+    assert 'Unknown command' in result.stderr
+
+
+def test_port_command_rewrites_the_published_port(shell, tmp_path, fake_bin):
+    target = tmp_path / 'port-deployment'
+    directory = str(target).replace('\\', '/')
+
+    first = _run(
+        shell,
+        ['--dir', directory, '--port', '5112', '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert first.returncode == 0, first.stderr
+
+    second = _run(
+        shell,
+        ['port', '--dir', directory, '--port', '5223', '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert second.returncode == 0, second.stderr
+
+    env_text = (target / '.env').read_text(encoding='utf-8')
+    assert 'CORS_ORIGINS=http://localhost:5223,http://127.0.0.1:5223' in env_text
+    assert 'WEBSSH_HOST_PORT=5223' in env_text
+
+    compose_text = (target / 'docker-compose.yml').read_text(encoding='utf-8')
+    assert '- "5223:5000"' in compose_text
+    assert '- "5112:5000"' not in compose_text
+
+
+def test_status_reuses_the_configured_port(shell, tmp_path, fake_bin):
+    target = tmp_path / 'status-deployment'
+    directory = str(target).replace('\\', '/')
+
+    install = _run(
+        shell,
+        ['--dir', directory, '--port', '5112', '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert install.returncode == 0, install.stderr
+
+    result = _run(
+        shell,
+        ['status', '--dir', directory],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Port: 5112' in result.stdout
+    assert 'Command: status' in result.stdout
+
+
+def test_port_command_requires_an_explicit_port(shell, tmp_path, fake_bin):
+    target = tmp_path / 'missing-port-deployment'
+    directory = str(target).replace('\\', '/')
+
+    install = _run(
+        shell,
+        ['--dir', directory, '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert install.returncode == 0, install.stderr
+
+    result = _run(
+        shell,
+        ['port', '--dir', directory],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+
+    assert result.returncode == 1
+    assert '--port is required for the port command' in result.stderr
+
+
+def test_uninstall_needs_confirmation_and_keeps_data_by_default(
+        shell, tmp_path, fake_bin):
+    target = tmp_path / 'uninstall-deployment'
+    directory = str(target).replace('\\', '/')
+
+    install = _run(
+        shell,
+        ['--dir', directory, '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert install.returncode == 0, install.stderr
+    (target / 'data' / 'keys').mkdir(parents=True)
+    (target / 'data' / 'app.db').write_text('', encoding='utf-8')
+
+    unconfirmed = _run(
+        shell,
+        ['uninstall', '--dir', directory],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert unconfirmed.returncode == 1
+    assert 'Re-run with --yes' in unconfirmed.stderr
+
+    confirmed = _run(
+        shell,
+        ['uninstall', '--dir', directory, '--yes'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert confirmed.returncode == 0, confirmed.stderr
+    assert not (target / '.env').exists()
+    assert not (target / 'docker-compose.yml').exists()
+    # Data survives an uninstall unless --purge is given.
+    assert (target / 'data' / 'app.db').is_file()
+
+
+def test_uninstall_purge_removes_application_data(shell, tmp_path, fake_bin):
+    target = tmp_path / 'purge-deployment'
+    directory = str(target).replace('\\', '/')
+
+    install = _run(
+        shell,
+        ['--dir', directory, '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert install.returncode == 0, install.stderr
+    (target / 'data').mkdir(parents=True, exist_ok=True)
+    (target / 'data' / 'app.db').write_text('', encoding='utf-8')
+
+    result = _run(
+        shell,
+        ['uninstall', '--dir', directory, '--yes', '--purge'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not (target / 'data').exists()
+
+
+def test_reset_password_flags_require_the_command(shell, tmp_path, fake_bin):
+    target = tmp_path / 'wrong-command'
+    directory = str(target).replace('\\', '/')
+
+    result = _run(
+        shell,
+        ['--dir', directory, '--username', 'admin'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+
+    assert result.returncode == 1
+    assert 'require the reset-password command' in result.stderr
+    assert not target.exists()
+
+
+def test_reset_password_requires_a_username(shell, tmp_path, fake_bin):
+    target = tmp_path / 'reset-deployment'
+    directory = str(target).replace('\\', '/')
+
+    install = _run(
+        shell,
+        ['--dir', directory, '--no-start'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+    assert install.returncode == 0, install.stderr
+
+    result = _run(
+        shell,
+        ['reset-password', '--dir', directory, '--generate'],
+        cwd=tmp_path,
+        fake_bin=fake_bin,
+    )
+
+    assert result.returncode == 1
+    assert '--username is required' in result.stderr
+
+
+def test_installer_documents_linux_distribution_support():
+    script = INSTALLER.read_text(encoding='utf-8')
+
+    # Every supported package manager must be reachable from the dispatcher.
+    for manager in ('apt-get', 'dnf', 'yum', 'zypper', 'pacman', 'apk'):
+        assert manager in script
+    assert 'detect_package_manager' in script
+    assert 'install_package_set' in script
+    assert 'ensure_docker' in script
+    assert 'python3-venv' in script
+
+
+def test_installer_writes_a_systemd_unit_for_source_mode():
+    script = INSTALLER.read_text(encoding='utf-8')
+
+    assert 'SERVICE_FILE="/etc/systemd/system/webssh.service"' in script
+    assert 'write_systemd_unit' in script
+    assert 'EnvironmentFile=$SERVICE_ENV_FILE' in script
+    assert 'systemctl daemon-reload' in script
+
+
 @pytest.mark.parametrize(
     'arguments, message',
     [

@@ -209,11 +209,21 @@ def test_factory_target_nonmaintenance_command_keeps_ldap_fail_fast(tmp_path):
     assert not data_dir.exists()
 
 
-def test_skipped_ldap_runtime_validation_is_not_marked_ready(monkeypatch):
+def test_skipped_ldap_runtime_validation_is_not_marked_ready(
+    monkeypatch,
+    tmp_path,
+):
     import app as app_module
     import config
 
+    # A complete LDAP configuration passes the fail-closed config validation;
+    # only the runtime files are missing, which is what a maintenance command
+    # deliberately skips.
+    for key, value in _missing_ldap_runtime_environment(tmp_path).items():
+        monkeypatch.setenv(key, value)
     monkeypatch.setattr(config, 'LDAP_ENABLED', True)
+    for key, value in _missing_ldap_runtime_environment(tmp_path).items():
+        monkeypatch.setattr(config, key, value)
     monkeypatch.setattr(
         app_module,
         '_is_maintenance_cli_invocation',
@@ -595,6 +605,239 @@ def test_saved_registration_setting_is_not_overwritten(
 
     assert app_settings.is_registration_enabled() is True
     assert path.read_bytes() == original
+
+
+def _create_user(app, username, password, *, is_admin=False):
+    from app.models import User, db
+
+    with app.app_context():
+        user = User(username=username, is_admin=is_admin)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        return user.id
+
+
+def _user(app, username):
+    from app.models import User
+
+    with app.app_context():
+        return User.query.filter_by(username=username).first()
+
+
+def test_reset_password_rotates_the_hash_and_the_auth_generation(app):
+    user_id = _create_user(app, 'resetuser', 'original-password')
+    before = _user(app, 'resetuser')
+    original_hash = before.password_hash
+    original_generation = before.auth_generation
+
+    result = app.test_cli_runner().invoke(
+        args=['reset-password', '--username', 'resetuser'],
+        input='replacement-password\nreplacement-password\n',
+    )
+
+    assert result.exit_code == 0, result.output
+    assert 'replacement-password' not in result.output
+
+    after = _user(app, 'resetuser')
+    assert after.id == user_id
+    assert after.password_hash != original_hash
+    assert after.check_password('replacement-password')
+    assert not after.check_password('original-password')
+    # Every browser session derived from the old credentials must be invalid.
+    assert after.auth_generation == int(original_generation or 0) + 1
+
+
+def test_reset_password_accepts_a_password_file(app, tmp_path):
+    _create_user(app, 'resetfileuser', 'original-password')
+    password_file = tmp_path / 'new-password'
+    password_file.write_text('file-replacement\n', encoding='utf-8')
+
+    result = app.test_cli_runner().invoke(
+        args=[
+            'reset-password',
+            '--username',
+            'resetfileuser',
+            '--password-file',
+            str(password_file),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert _user(app, 'resetfileuser').check_password('file-replacement')
+
+
+def test_reset_password_reads_stdin_without_echoing_it(app):
+    _create_user(app, 'resetstdinuser', 'original-password')
+
+    result = app.test_cli_runner().invoke(
+        args=[
+            'reset-password',
+            '--username',
+            'resetstdinuser',
+            '--password-stdin',
+        ],
+        input='stdin-replacement\n',
+    )
+
+    assert result.exit_code == 0, result.output
+    assert 'stdin-replacement' not in result.output
+    assert _user(app, 'resetstdinuser').check_password('stdin-replacement')
+
+
+def test_reset_password_generate_prints_the_new_password_once(app):
+    _create_user(app, 'resetgenuser', 'original-password')
+
+    result = app.test_cli_runner().invoke(
+        args=[
+            'reset-password',
+            '--username',
+            'resetgenuser',
+            '--generate',
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert 'New password:' in result.output
+
+    printed = result.output.split('New password:', 1)[1].strip().splitlines()[0]
+    assert len(printed) >= 8
+    assert _user(app, 'resetgenuser').check_password(printed)
+
+
+@pytest.mark.parametrize(
+    'password, message',
+    [
+        ('short', 'at least 8 characters'),
+        ('a' * 73, '72 bytes'),
+    ],
+)
+def test_reset_password_rejects_invalid_passwords(app, password, message):
+    _create_user(app, 'resetinvaliduser', 'original-password')
+    original_hash = _user(app, 'resetinvaliduser').password_hash
+
+    result = app.test_cli_runner().invoke(
+        args=[
+            'reset-password',
+            '--username',
+            'resetinvaliduser',
+            '--password-stdin',
+        ],
+        input=f'{password}\n',
+    )
+
+    assert result.exit_code != 0
+    assert message in result.output
+    assert _user(app, 'resetinvaliduser').password_hash == original_hash
+
+
+def test_reset_password_rejects_unknown_and_managed_accounts(app):
+    missing = app.test_cli_runner().invoke(
+        args=['reset-password', '--username', 'ghostuser', '--generate'],
+    )
+    assert missing.exit_code != 0
+    assert 'Account not found' in missing.output
+
+    _create_user(app, 'resetldapuser', 'original-password')
+    with app.app_context():
+        from app.models import LDAPIdentity, User, db
+
+        user = User.query.filter_by(username='resetldapuser').first()
+        db.session.add(LDAPIdentity(
+            user_id=user.id,
+            provider='ldap',
+            subject='ldap-stable-subject',
+            directory_username='resetldapuser',
+            distinguished_name='uid=resetldapuser,dc=example,dc=com',
+        ))
+        db.session.commit()
+
+    managed = app.test_cli_runner().invoke(
+        args=['reset-password', '--username', 'resetldapuser', '--generate'],
+    )
+    assert managed.exit_code != 0
+    assert 'directory' in managed.output.lower()
+
+
+def test_reset_password_rejects_conflicting_password_sources(app, tmp_path):
+    _create_user(app, 'resetconflictuser', 'original-password')
+    password_file = tmp_path / 'conflict-password'
+    password_file.write_text('conflict-replacement\n', encoding='utf-8')
+
+    result = app.test_cli_runner().invoke(
+        args=[
+            'reset-password',
+            '--username',
+            'resetconflictuser',
+            '--generate',
+            '--password-file',
+            str(password_file),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert 'only one of' in result.output.lower()
+    assert _user(app, 'resetconflictuser').check_password('original-password')
+
+
+def test_reset_password_audit_omits_password_material(app, caplog):
+    _create_user(app, 'resetaudituser', 'original-password')
+
+    result = app.test_cli_runner().invoke(
+        args=[
+            'reset-password',
+            '--username',
+            'resetaudituser',
+            '--password-stdin',
+        ],
+        input='audited-replacement\n',
+    )
+
+    assert result.exit_code == 0, result.output
+    records = [
+        record
+        for record in caplog.records
+        if record.name == 'security_audit'
+    ]
+    assert any(
+        record.getMessage() == 'PASSWORD_RESET_SUCCESS'
+        and record.extra_data == {
+            'user': 'resetaudituser',
+            'method': 'password-stdin',
+        }
+        for record in records
+    )
+    assert 'audited-replacement' not in repr(records)
+
+
+def test_reset_password_runs_through_the_cli_entrypoint(tmp_path):
+    data_dir = tmp_path / 'reset-password-data'
+
+    password_file = tmp_path / 'admin-password'
+    password_file.write_text('service-admin-password\n', encoding='utf-8')
+    admin = _maintenance_cli(
+        data_dir,
+        'create-admin',
+        '--username',
+        'resetserviceadmin',
+        '--password-file',
+        str(password_file),
+    )
+    assert admin.returncode == 0, admin.stderr
+
+    replacement = tmp_path / 'replacement-password'
+    replacement.write_text('service-replacement\n', encoding='utf-8')
+    result = _maintenance_cli(
+        data_dir,
+        'reset-password',
+        '--username',
+        'resetserviceadmin',
+        '--password-file',
+        str(replacement),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'Password reset for: resetserviceadmin' in result.stdout
 
 
 def test_legacy_role_migration_promotes_only_oldest_existing_user(app):

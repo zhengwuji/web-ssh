@@ -2,6 +2,7 @@ import json
 import os
 import secrets
 import stat
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -178,6 +179,126 @@ def create_admin(username, password_file):
 
     _audit_admin_bootstrap(username, 'created')
     click.echo(f'Administrator created: {username}')
+
+
+def _validate_password(password):
+    """Return a validation error for a standalone password change, or None."""
+    from .auth import password_exceeds_bcrypt_limit
+
+    if not password or len(password) < 8:
+        return "Password must be at least 8 characters"
+    if password_exceeds_bcrypt_limit(password):
+        return (
+            f"Password must not exceed {config.MAX_PASSWORD_LENGTH} bytes "
+            "when encoded as UTF-8"
+        )
+    return None
+
+
+@click.command('reset-password')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--password-file',
+    type=click.Path(path_type=Path),
+    metavar='PATH',
+)
+@click.option('--password-stdin', is_flag=True)
+@click.option('--generate', is_flag=True)
+def reset_password(username, password_file, password_stdin, generate):
+    """Reset the password of an existing local account."""
+    from . import _initialize_persistent_storage
+    from .auth_assurance import invalidate_user_authentication
+    from .session_epoch import reset_cache
+    _initialize_persistent_storage(current_app._get_current_object())
+
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        raise click.ClickException(f'Account not found: {username}')
+    if user.is_ldap_managed:
+        raise click.ClickException(
+            'LDAP-managed accounts keep their password in the directory.'
+        )
+    if user.is_github_managed:
+        raise click.ClickException(
+            'GitHub-managed accounts have no local password.'
+        )
+
+    sources = [
+        name
+        for name, enabled in (
+            ('--password-file', password_file is not None),
+            ('--password-stdin', password_stdin),
+            ('--generate', generate),
+        )
+        if enabled
+    ]
+    if len(sources) > 1:
+        raise click.ClickException(
+            f'Use only one of {", ".join(sources)}.'
+        )
+
+    generated = False
+    if generate:
+        password = secrets.token_urlsafe(18)
+        generated = True
+    elif password_file is not None:
+        password = _read_password_file(password_file)
+    elif password_stdin:
+        raw = sys.stdin.buffer.read(config.MAX_PASSWORD_LENGTH + 3)
+        if len(raw) > config.MAX_PASSWORD_LENGTH + 2:
+            raise click.ClickException(
+                'Password must not exceed '
+                f'{config.MAX_PASSWORD_LENGTH} bytes when encoded as UTF-8.'
+            )
+        try:
+            password = raw.decode('utf-8')
+        except UnicodeDecodeError as exc:
+            raise click.ClickException(
+                'Password must be valid UTF-8.'
+            ) from exc
+        if password.endswith('\n'):
+            password = password[:-1]
+            if password.endswith('\r'):
+                password = password[:-1]
+    else:
+        password = click.prompt(
+            'Password',
+            hide_input=True,
+            confirmation_prompt=True,
+        )
+
+    error = _validate_password(password)
+    if error:
+        raise click.ClickException(error)
+
+    previous_hash = user.password_hash
+    try:
+        user.set_password(password)
+        # Invalidate every browser session and pending ceremony derived from
+        # the old credentials; only the generation bump is persisted here.
+        invalidate_user_authentication(user)
+        db.session.commit()
+    except Exception:
+        user.password_hash = previous_hash
+        db.session.rollback()
+        raise
+
+    reset_cache()
+    _audit_operation(
+        'PASSWORD_RESET_SUCCESS',
+        user=username,
+        method=(
+            'generated' if generated
+            else 'password-file' if password_file is not None
+            else 'password-stdin' if password_stdin
+            else 'prompt'
+        ),
+    )
+    click.echo(f'Password reset for: {username}')
+    click.echo('Every existing browser session for that account is now invalid.')
+    if generated:
+        click.echo(f'New password: {password}')
+        click.echo('Store it now; it is not shown again.')
 
 
 def warn_if_no_admin():
@@ -490,6 +611,7 @@ def rotate_secret_key(confirm_offline):
 
 def register_cli(app):
     app.cli.add_command(create_admin)
+    app.cli.add_command(reset_password)
     app.cli.add_command(issue_factor_bootstrap)
     app.cli.add_command(connection_store_cli)
     app.cli.add_command(backup_cli)
