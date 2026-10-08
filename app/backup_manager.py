@@ -33,6 +33,11 @@ _BACKUP_EXCLUDED_TOP_LEVEL_DIRECTORIES = (
     _RESTORE_PRESERVED_TOP_LEVEL_DIRECTORIES
     | _RESTORE_DISCARDED_TOP_LEVEL_DIRECTORIES
 )
+# SQLite keeps committed transactions in these sidecar files while the
+# database runs in WAL mode. They are rebuilt from app.db on open, so they
+# must never be archived: a byte copy of app.db alone would be an older
+# snapshot that is missing every WAL-resident commit.
+_SQLITE_SIDECAR_SUFFIXES = ('-wal', '-shm', '-journal')
 
 
 class BackupIntegrityError(ValueError):
@@ -292,8 +297,63 @@ def _copy_regular_file(source, destination):
     return digest.hexdigest(), size
 
 
+def _sqlite_sidecars(source):
+    """Return the sidecar files SQLite may hold beside a database."""
+    return tuple(
+        source.with_name(source.name + suffix)
+        for suffix in _SQLITE_SIDECAR_SUFFIXES
+    )
+
+
+def _stage_sqlite_snapshot(source, destination):
+    """Stage a consistent database snapshot, WAL contents included.
+
+    In WAL mode committed transactions live in ``app.db-wal`` until a
+    checkpoint folds them back into ``app.db``. Copying the main file byte
+    for byte would therefore archive a stale database that is missing every
+    recent commit, so the online backup API is used to produce a single
+    self-contained file instead.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix='.webssh-backup-snapshot-',
+        suffix='.db',
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    source_connection = None
+    snapshot_connection = None
+    try:
+        source_connection = sqlite3.connect(str(source))
+        snapshot_connection = sqlite3.connect(str(temporary))
+        source_connection.backup(snapshot_connection)
+        snapshot_connection.commit()
+        snapshot_connection.close()
+        snapshot_connection = None
+        source_connection.close()
+        source_connection = None
+    except sqlite3.Error as exc:
+        raise BackupIntegrityError(
+            f'backup source database is unreadable: {source.name}'
+        ) from exc
+    finally:
+        if snapshot_connection is not None:
+            snapshot_connection.close()
+        if source_connection is not None:
+            source_connection.close()
+    try:
+        digest, size = _copy_regular_file(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return digest, size
+
+
 def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
     files = []
+    sidecars = {
+        sidecar.relative_to(data_dir).as_posix()
+        for sidecar in _sqlite_sidecars(data_dir / _DATABASE_PATH)
+    }
     for current_root, directory_names, file_names in os.walk(
         data_dir,
         topdown=True,
@@ -321,9 +381,18 @@ def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
             relative = source.relative_to(data_dir).as_posix()
             if relative in excluded_relative_paths:
                 continue
+            if relative in sidecars:
+                # Rebuilt from app.db when the database is opened again.
+                continue
             _safe_relative_path(relative)
             staged = stage / relative
-            digest, size = _copy_regular_file(source, staged)
+            if relative == _DATABASE_PATH and any(
+                sidecar.exists()
+                for sidecar in _sqlite_sidecars(source)
+            ):
+                digest, size = _stage_sqlite_snapshot(source, staged)
+            else:
+                digest, size = _copy_regular_file(source, staged)
             files.append(BackupFile(relative, digest, size))
     created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     return BackupManifest(

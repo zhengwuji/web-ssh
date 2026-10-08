@@ -79,6 +79,19 @@ STORAGE_ERROR_MESSAGE = (
 
 
 _SMB_REQUEST_ID = re.compile(r'[A-Za-z0-9:._-]{1,128}')
+# Hot-path patterns compiled once at import time. ``fullmatch`` (instead of
+# ``match`` with ``^...$``) is required because ``$`` also matches immediately
+# before a trailing newline, so ``"alice\n"`` used to pass validation.
+_USERNAME_PATTERN = re.compile(r'[a-zA-Z0-9_\-\.]{1,32}')
+_TMUX_SESSION_NAME = re.compile(r'[A-Za-z0-9_]{1,190}')
+_FILE_SOURCE_CURSOR = re.compile(r'[A-Za-z0-9._-]+')
+_EDITOR_RETRY_TOKEN = re.compile(r'[A-Za-z0-9_-]{32,64}')
+_HOST_KEY_PROMPT_ID = re.compile(r'[A-Za-z0-9_-]{16,64}')
+_SSH_INPUT_FIELDS = frozenset({
+    'session_id',
+    'data',
+    'acknowledge_backpressure',
+})
 _FILE_SOURCE_ID_MAX_BYTES = 160
 _FILE_CONTROL_SMALL_TEXT_MAX_BYTES = 128
 _FILE_CONTROL_PATH_FIELDS = frozenset({
@@ -138,6 +151,9 @@ _ssh_connect_attempts = {}
 _ssh_banner_prompts_lock = threading.RLock()
 _ssh_banner_prompts = {}
 SSH_AUTH_BANNER_DECISION_TIMEOUT = 60
+_ssh_host_key_prompts_lock = threading.RLock()
+_ssh_host_key_prompts = {}
+SSH_HOST_KEY_DECISION_TIMEOUT = SSH_AUTH_BANNER_DECISION_TIMEOUT
 _ssh_input_budget = budget_from_config(config)
 
 
@@ -179,6 +195,106 @@ def _cancel_ssh_banner_prompt_for_request(user_id, socket_sid, request_id):
     for prompt in prompts:
         prompt['accepted'] = False
         prompt['event'].set()
+
+
+def _cancel_ssh_host_key_prompts_for_socket(socket_sid):
+    with _ssh_host_key_prompts_lock:
+        prompts = [
+            prompt
+            for prompt in _ssh_host_key_prompts.values()
+            if prompt['socket_sid'] == socket_sid
+        ]
+    for prompt in prompts:
+        prompt['event'].set()
+
+
+def _cancel_ssh_host_key_prompt_for_request(user_id, socket_sid, request_id):
+    with _ssh_host_key_prompts_lock:
+        prompts = [
+            prompt
+            for prompt in _ssh_host_key_prompts.values()
+            if prompt['socket_sid'] == socket_sid
+            and prompt['user_id'] == user_id
+            and prompt.get('client_request_id') == request_id
+        ]
+    for prompt in prompts:
+        prompt['accepted'] = False
+        prompt['event'].set()
+
+
+def _quick_host_key_decision(
+    *,
+    user_id,
+    socket_sid,
+    username,
+    port,
+    ip_address,
+    cancelled,
+    gateway_attempt,
+    send_prompt,
+    client_request_id=None,
+):
+    """Build a host-key decision callback for a background Quick connect job.
+
+    The pool calls the returned callback with exactly four positional
+    arguments, so the Quick-specific prompt shape (``flow='quick'`` and the
+    absence of a correlation id) is captured in this closure instead.
+
+    ``client_request_id`` is recorded on the prompt only so that a cancel
+    request can address it; it is never part of the emitted payload, which is
+    correlated by the gateway attempt or not at all.
+    """
+
+    def request_host_key_decision(hostname, key_type, fingerprint, context):
+        if cancelled() or (
+            gateway_attempt is not None and gateway_attempt.is_set()
+        ):
+            return False
+        prompt_id = secrets.token_urlsafe(24)
+        decision_event = threading.Event()
+        prompt = {
+            'event': decision_event,
+            'accepted': False,
+            'socket_sid': socket_sid,
+            'user_id': user_id,
+            'client_request_id': client_request_id,
+        }
+        with _ssh_host_key_prompts_lock:
+            _ssh_host_key_prompts[prompt_id] = prompt
+            if cancelled() or (
+                gateway_attempt is not None and gateway_attempt.is_set()
+            ):
+                decision_event.set()
+        send_prompt(prompt_id, hostname, key_type, fingerprint, context)
+        if gateway_attempt is None:
+            answered = decision_event.wait(SSH_HOST_KEY_DECISION_TIMEOUT)
+        else:
+            answered = False
+            key_deadline = time.monotonic() + SSH_HOST_KEY_DECISION_TIMEOUT
+            while (
+                time.monotonic() < key_deadline
+                and not gateway_attempt.is_set()
+            ):
+                if decision_event.wait(.1):
+                    answered = True
+                    break
+        with _ssh_host_key_prompts_lock:
+            _ssh_host_key_prompts.pop(prompt_id, None)
+        accepted = answered and prompt['accepted'] is True
+        log_security_event(
+            'SSH_HOST_KEY_DECISION',
+            user=username,
+            host=hostname,
+            port=port,
+            context=context,
+            result='ACCEPTED' if accepted else (
+                'DECLINED' if answered else 'TIMED_OUT'
+            ),
+            ip_address=ip_address,
+        )
+        return accepted
+
+    return request_host_key_decision
 
 
 def _try_cancel_ssh_attempt(attempt):
@@ -332,7 +448,7 @@ def _file_request_identity(
     if (
         not isinstance(request_id, str)
         or len(request_id) > 128
-        or not re.fullmatch(r'[A-Za-z0-9:._-]{1,128}', request_id)
+        or not _SMB_REQUEST_ID.fullmatch(request_id)
     ):
         request_id = None
     return {
@@ -616,7 +732,7 @@ def _consume_editor_retry_challenge(payload, user_id, socket_sid=None):
     token = payload.get('save_challenge')
     if (
         not isinstance(token, str)
-        or re.fullmatch(r'[A-Za-z0-9_-]{32,64}', token) is None
+        or _EDITOR_RETRY_TOKEN.fullmatch(token) is None
     ):
         return False
     socket_sid = _current_socket_sid() if socket_sid is None else socket_sid
@@ -685,7 +801,7 @@ def _valid_directory_cursor(cursor):
         or (
             isinstance(cursor, str)
             and 1 <= len(cursor) <= 160
-            and re.fullmatch(r'[A-Za-z0-9._-]+', cursor) is not None
+            and _FILE_SOURCE_CURSOR.fullmatch(cursor) is not None
         )
     )
 
@@ -879,7 +995,7 @@ def _validate_ssh_params(host, port, username, allow_internal=False, *, allow_ga
     username = (username or '').strip()
     if not username:
         return None, None, None, 'Username is required'
-    if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+    if not _USERNAME_PATTERN.fullmatch(username):
         return None, None, None, 'Invalid username format'
 
     return canonicalize_hostname(host), port, username, None
@@ -1324,6 +1440,7 @@ def handle_disconnect():
     socket_sid = request.sid
     ssh_output_flow.release_socket(socket_sid)
     _cancel_ssh_banner_prompts_for_socket(socket_sid)
+    _cancel_ssh_host_key_prompts_for_socket(socket_sid)
     _cancel_ssh_connect_attempts_for_socket(socket_sid)
     current_app.extensions['ssh_attempt_registry'].cancel_socket(socket_sid)
     owner_id = socket_capacity.release(socket_sid)
@@ -1496,13 +1613,42 @@ def handle_ssh_auth_banner_decision(data, current_user=None):
     accepted = data.get('accepted')
     if (
         not isinstance(prompt_id, str)
-        or not re.fullmatch(r'[A-Za-z0-9_-]{16,64}', prompt_id)
+        or not _HOST_KEY_PROMPT_ID.fullmatch(prompt_id)
         or type(accepted) is not bool
     ):
         return {'success': False}
 
     with _ssh_banner_prompts_lock:
         prompt = _ssh_banner_prompts.get(prompt_id)
+        if (
+            prompt is None
+            or prompt['socket_sid'] != request.sid
+            or prompt['user_id'] != current_user.id
+            or prompt['event'].is_set()
+        ):
+            return {'success': False}
+        prompt['accepted'] = accepted
+        prompt['event'].set()
+    return {'success': True}
+
+
+@socketio.on('ssh_host_key_decision')
+@socket_login_required
+def handle_ssh_host_key_decision(data, current_user=None):
+    """Resolve one pending first-seen SSH host-key fingerprint prompt."""
+    if not isinstance(data, dict):
+        return {'success': False}
+    prompt_id = data.get('prompt_id')
+    accepted = data.get('accepted')
+    if (
+        not isinstance(prompt_id, str)
+        or not _HOST_KEY_PROMPT_ID.fullmatch(prompt_id)
+        or type(accepted) is not bool
+    ):
+        return {'success': False}
+
+    with _ssh_host_key_prompts_lock:
+        prompt = _ssh_host_key_prompts.get(prompt_id)
         if (
             prompt is None
             or prompt['socket_sid'] != request.sid
@@ -1592,6 +1738,63 @@ def handle_ssh_connect(data, current_user=None):
             accepted = answered and prompt['accepted'] is True
             log_security_event(
                 'SSH_AUTH_BANNER_DECISION',
+                user=current_user.username,
+                host=bastion_host if context == 'jump_host' else host,
+                port=bastion_port if context == 'jump_host' else port,
+                context=context,
+                result='ACCEPTED' if accepted else (
+                    'DECLINED' if answered else 'TIMED_OUT'
+                ),
+                ip_address=request.remote_addr,
+            )
+            return accepted
+
+        def request_host_key_decision(hostname, key_type, fingerprint, context):
+            """Ask the browser to trust a first-seen SSH host key.
+
+            Blocks the connect job until the user answers or the prompt times
+            out; the key is only recorded when the answer is affirmative.
+            """
+            if (client_cancel_event.is_set()
+                    or (gateway_attempt is not None and gateway_attempt.is_set())):
+                return False
+            prompt_id = secrets.token_urlsafe(24)
+            decision_event = threading.Event()
+            prompt = {
+                'event': decision_event,
+                'accepted': False,
+                'socket_sid': socket_sid,
+                'user_id': current_user.id,
+                'client_request_id': client_request_id,
+            }
+            with _ssh_host_key_prompts_lock:
+                _ssh_host_key_prompts[prompt_id] = prompt
+                if (client_cancel_event.is_set()
+                        or (gateway_attempt is not None and gateway_attempt.is_set())):
+                    decision_event.set()
+            emit('ssh_host_key_confirm', {
+                'prompt_id': prompt_id,
+                'host': bastion_host if context == 'jump_host' else host,
+                'port': bastion_port if context == 'jump_host' else port,
+                'key_type': key_type,
+                'fingerprint': fingerprint,
+                'context': context,
+                'client_request_id': client_request_id,
+            })
+            if gateway_attempt is None:
+                answered = decision_event.wait(SSH_HOST_KEY_DECISION_TIMEOUT)
+            else:
+                answered = False
+                key_deadline = time.monotonic() + SSH_HOST_KEY_DECISION_TIMEOUT
+                while time.monotonic() < key_deadline and not gateway_attempt.is_set():
+                    if decision_event.wait(.1):
+                        answered = True
+                        break
+            with _ssh_host_key_prompts_lock:
+                _ssh_host_key_prompts.pop(prompt_id, None)
+            accepted = answered and prompt['accepted'] is True
+            log_security_event(
+                'SSH_HOST_KEY_DECISION',
                 user=current_user.username,
                 host=bastion_host if context == 'jump_host' else host,
                 port=bastion_port if context == 'jump_host' else port,
@@ -1752,9 +1955,9 @@ def handle_ssh_connect(data, current_user=None):
         if use_tmux:
             raw_name = data.get('reconnect_tmux_name')
             if raw_name:
-                import re as _re
-                # Whitelist: alphanumeric, underscores, max 190 chars
-                if not _re.match(r'^[A-Za-z0-9_]{1,190}$', raw_name):
+                # Whitelist: alphanumeric, underscores, max 190 chars.
+                # ``fullmatch`` rejects a trailing newline, which ``$`` allowed.
+                if not _TMUX_SESSION_NAME.fullmatch(raw_name):
                     emit_error('Invalid tmux session name')
                     return
                 # Verify the name maps to an SSHSession owned by this user
@@ -1857,6 +2060,11 @@ def handle_ssh_connect(data, current_user=None):
                         '' if reconnect_tmux_name else startup_commands
                     ),
                     auth_banner_decision=request_auth_banner_decision,
+                    host_key_decision=(
+                        request_host_key_decision
+                        if config.HOST_KEY_CONFIRM_ENABLED
+                        else None
+                    ),
                     tailscale_authorization=tailscale_authorization,
                     cancel_event=cancellation,
                     client_request_id=client_request_id,
@@ -1961,6 +2169,11 @@ def handle_ssh_connect(data, current_user=None):
                     )
                     db.session.add(ssh_session)
                     db.session.commit()
+                    with ssh_manager.sessions_lock:
+                        tracked = ssh_manager.sessions.get(session_id)
+                    row_event = tracked.get('db_row_event') if tracked else None
+                    if row_event is not None:
+                        row_event.set()
                 except Exception as db_err:
                     db.session.rollback()
                     log_error(
@@ -1968,6 +2181,11 @@ def handle_ssh_connect(data, current_user=None):
                         error=str(db_err),
                         session_id=session_id,
                     )
+                    with ssh_manager.sessions_lock:
+                        tracked = ssh_manager.sessions.get(session_id)
+                    row_event = tracked.get('db_row_event') if tracked else None
+                    if row_event is not None:
+                        row_event.set()
 
                 emit('ssh_connected', {
                     'session_id': session_id,
@@ -2099,6 +2317,7 @@ def handle_ssh_connect_cancel(data, current_user=None):
         if not gateway.cancel():
             return {'success': False, 'cancelled': False, 'reason': 'already_committed'}
         _cancel_ssh_banner_prompt_for_request(current_user.id, request.sid, request_id)
+        _cancel_ssh_host_key_prompt_for_request(current_user.id, request.sid, request_id)
         return {'success': True, 'cancelled': True}
     attempt_key = (str(current_user.id), request.sid, request_id)
     with _ssh_connect_attempts_lock:
@@ -2109,6 +2328,11 @@ def handle_ssh_connect_cancel(data, current_user=None):
             return {'success': False, 'cancelled': False, 'reason': 'already_committed'}
         handle = attempt.get('handle')
     _cancel_ssh_banner_prompt_for_request(
+        current_user.id,
+        request.sid,
+        request_id,
+    )
+    _cancel_ssh_host_key_prompt_for_request(
         current_user.id,
         request.sid,
         request_id,
@@ -2176,12 +2400,7 @@ def handle_ssh_input(data, current_user=None):
     """Handle user input to SSH session."""
     try:
         data = data if isinstance(data, dict) else {}
-        allowed_fields = {
-            'session_id',
-            'data',
-            'acknowledge_backpressure',
-        }
-        if any(field not in allowed_fields for field in data):
+        if any(field not in _SSH_INPUT_FIELDS for field in data):
             return {'success': False, 'error': 'Invalid SSH input'}
         session_id = data.get('session_id')
         input_data = data.get('data')
@@ -2270,9 +2489,19 @@ def handle_keep_alive(data=None, current_user=None):
     try:
         import time
         with ssh_manager.sessions_lock:
-            for sid, session in ssh_manager.sessions.items():
-                if session.get('user_id') == current_user.id:
-                    session['last_activity'] = time.time()
+            owned = [
+                session
+                for session in ssh_manager.sessions.values()
+                if session.get('user_id') == current_user.id
+            ]
+        now = time.time()
+        for session in owned:
+            session_lock = session.get('_lock')
+            if session_lock is not None:
+                with session_lock:
+                    session['last_activity'] = now
+            else:
+                session['last_activity'] = now
     except Exception as e:
         log_debug(f"Keep-alive error: {e}")
 
@@ -4399,34 +4628,115 @@ def handle_quick_connect(data, current_user=None):
             )
             return
 
-        connection_id, error = connection_pool.temp_connection_pool.create_connection(
-            host=host,
-            port=port,
-            username=username,
-            password=password,
-            key_content=key_content,
-            user_id=str(current_user.id)
-        )
+        lifecycle = current_app.extensions.get('runtime_lifecycle')
+        if lifecycle is None or not lifecycle.accepting_work():
+            send_error({'error': 'Server is shutting down'})
+            return
 
-        if password:
-            password = None
-        if key_content:
-            key_content = None
+        app = current_app._get_current_object()
+        socket_sid = request.sid
+        database_user_id = current_user.id
+        owner_username = current_user.username
+        user_id = str(database_user_id)
+        ip_address = request.remote_addr
+        credential_box = {'password': password, 'key_content': key_content}
 
-        if error:
-            send_error(connection_error_payload(error))
-        else:
-            emit('quick_connect_success', {
-                'connection_id': connection_id,
-                'host': host,
-                'port': port,
-                'username': username,
-                'file_source': _public_file_source(
-                    make_source_id(FileSourceKind.SFTP_QUICK, connection_id),
-                    current_user.id,
-                ),
-            })
-            log_info(f"Quick connection created: {connection_id}", user=current_user.username, host=host)
+        def send_job_error(payload):
+            socketio.emit('quick_connect_error', payload, room=socket_sid)
+
+        def connect_quick(lifecycle_cancel_event):
+            local_password = credential_box.pop('password', None)
+            local_key_content = credential_box.pop('key_content', None)
+            host_key_decision = None
+            if config.HOST_KEY_CONFIRM_ENABLED:
+                host_key_decision = _quick_host_key_decision(
+                    user_id=database_user_id,
+                    socket_sid=socket_sid,
+                    username=owner_username,
+                    port=port,
+                    ip_address=ip_address,
+                    cancelled=lifecycle_cancel_event.is_set,
+                    gateway_attempt=None,
+                    send_prompt=lambda prompt_id, hostname, key_type, fingerprint, context: socketio.emit(
+                        'ssh_host_key_confirm',
+                        {
+                            'prompt_id': prompt_id,
+                            'host': hostname,
+                            'port': port,
+                            'key_type': key_type,
+                            'fingerprint': fingerprint,
+                            'context': context,
+                            'client_request_id': None,
+                            'flow': 'quick',
+                        },
+                        room=socket_sid,
+                    ),
+                )
+            connection_id = None
+            try:
+                connection_id, error = connection_pool.temp_connection_pool.create_connection(
+                    host=host,
+                    port=port,
+                    username=username,
+                    password=local_password,
+                    key_content=local_key_content,
+                    user_id=user_id,
+                    host_key_decision=host_key_decision,
+                )
+                if lifecycle_cancel_event.is_set():
+                    if connection_id:
+                        connection_pool.temp_connection_pool.request_close(
+                            connection_id, database_user_id,
+                        )
+                    return
+                if error:
+                    send_job_error(connection_error_payload(error))
+                    return
+                with app.app_context():
+                    socket_is_live = SocketSession.query.filter_by(
+                        socket_sid=socket_sid,
+                        user_id=database_user_id,
+                    ).first() is not None
+                if not socket_is_live:
+                    connection_pool.temp_connection_pool.request_close(
+                        connection_id, database_user_id,
+                    )
+                    return
+                socketio.emit('quick_connect_success', {
+                    'connection_id': connection_id,
+                    'host': host,
+                    'port': port,
+                    'username': username,
+                    'file_source': _public_file_source(
+                        make_source_id(FileSourceKind.SFTP_QUICK, connection_id),
+                        database_user_id,
+                    ),
+                }, room=socket_sid)
+                log_info(
+                    f"Quick connection created: {connection_id}",
+                    user=owner_username,
+                    host=host,
+                )
+            except Exception as e:
+                log_error("Quick connect failed", error=str(e))
+                if not lifecycle_cancel_event.is_set():
+                    send_job_error({'error': 'Connection failed'})
+            finally:
+                local_password = None
+                local_key_content = None
+
+        try:
+            lifecycle.start_job(
+                'quick_connect', connect_quick, owner_id=database_user_id,
+            )
+        except Exception as error:
+            credential_box.clear()
+            log_warning(
+                'Quick connect job rejected',
+                user_id=user_id,
+                exception_type=type(error).__name__,
+            )
+            send_error({'error': 'Server is shutting down'})
 
     except Exception as e:
         log_error("Quick connect failed", error=str(e))
@@ -5397,6 +5707,14 @@ def handle_transfer_server_to_server(data, current_user=None):
                     hasattr(active_source, 'backend')
                     and hasattr(active_destination, 'backend')
                 ):
+                    # Watermark: emit per-file transitions immediately, then at
+                    # most every 250 ms per file instead of per chunk.
+                    s2s_progress_state = {
+                        'last_time': 0.0,
+                        'last_path': None,
+                        'last_transferred': -1,
+                    }
+
                     def report_progress(progress):
                         nonlocal transferred
                         transferred = progress['transferred']
@@ -5404,11 +5722,27 @@ def handle_transfer_server_to_server(data, current_user=None):
                             transferred,
                             progress.get('file_size', 0),
                         )
+                        path = progress['path']
+                        now = time.monotonic()
+                        path_changed = path != s2s_progress_state['last_path']
+                        moved = (
+                            transferred
+                            != s2s_progress_state['last_transferred']
+                        )
+                        due = path_changed or (
+                            moved
+                            and now - s2s_progress_state['last_time'] >= 0.25
+                        )
+                        if not due:
+                            return
+                        s2s_progress_state['last_time'] = now
+                        s2s_progress_state['last_path'] = path
+                        s2s_progress_state['last_transferred'] = transferred
                         socketio.emit('s2s_transfer_progress', {
                             **response_context,
                             'transfer_id': transfer_id,
                             'filename': posixpath.basename(
-                                progress['path'].rstrip('/')
+                                path.rstrip('/')
                             ),
                             'transferred': transferred,
                             'total': total,
@@ -5643,12 +5977,35 @@ def _start_gateway_quick_connect(data, user, host, port, username, password, key
         attempt.bind_runtime(cancel_event)
         connection_id = None
         committed = False
+        host_key_decision = None
+        if config.HOST_KEY_CONFIRM_ENABLED:
+            host_key_decision = _quick_host_key_decision(
+                user_id=user_id,
+                socket_sid=sid,
+                username=user.username,
+                port=port,
+                ip_address=request.remote_addr,
+                cancelled=attempt.is_set,
+                gateway_attempt=attempt,
+                send_prompt=lambda prompt_id, hostname, key_type, fingerprint, context: attempt.send(
+                    'ssh_host_key_confirm',
+                    prompt_id=prompt_id,
+                    host=hostname,
+                    port=port,
+                    key_type=key_type,
+                    fingerprint=fingerprint,
+                    context=context,
+                    flow='quick',
+                ),
+                client_request_id=request_id,
+            )
         try:
             attempt.check()
             if cancel_event.is_set():
                 return
             connection_id, error = connection_pool.temp_connection_pool.create_connection(
                 host, port, username, user_id=user_id, gateway_attempt=attempt,
+                host_key_decision=host_key_decision,
                 **credentials,
             )
             credentials.clear()
@@ -5742,4 +6099,7 @@ def handle_gateway_quick_cancel(data, current_user=None):
         return {'success': False, 'reason': 'not_found'}
     if not attempt.cancel():
         return {'success': False, 'reason': 'already_committed'}
+    _cancel_ssh_host_key_prompt_for_request(
+        current_user.id, request.sid, data.get('client_request_id'),
+    )
     return {'success': True}

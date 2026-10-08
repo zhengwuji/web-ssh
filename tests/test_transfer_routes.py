@@ -1759,7 +1759,9 @@ def test_backend_zip_chmod_failure_removes_temporary_archive(
         assert mode == 0o600
         raise OSError('chmod unavailable')
 
-    monkeypatch.setattr(transfer_routes.Path, 'chmod', reject_chmod)
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler.os, 'chmod', reject_chmod
+    )
 
     with pytest.raises(OSError, match='chmod unavailable'):
         transfer_routes._build_backend_zip_to_disk(
@@ -2166,3 +2168,4 @@ def test_remote_zip_prefixes_leading_dash_folder_member():
     assert result[1] == 10
     assert ' ./-reports && ' in commands[0]
     assert ' -reports && ' not in commands[0]
+

@@ -8,7 +8,7 @@ from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
-from .auth import check_rate_limit, check_reauth_rate_limit
+from .auth import check_rate_limit, check_reauth_rate_limit, check_socket_rate_limit
 from .auth_assurance import (
     AssuranceLevel,
     AuthenticationFinalizationError,
@@ -243,6 +243,15 @@ def verify_totp_login():
     except (PendingAuthenticationError, AuthenticationFinalizationError):
         db.session.rollback()
         return jsonify({"error": "Pending authentication is invalid"}), 401
+    # Per-account bound: distributed guessing from many IPs must not exceed
+    # the same account's verification budget.
+    if config.RATELIMIT_ENABLED and check_socket_rate_limit(
+        pending.user_id,
+        "totp_login_account",
+        config.RATELIMIT_LOGIN_LIMIT,
+    ):
+        log_rate_limit_exceeded("totp_login_account", client_ip)
+        return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
     if not verify_totp(pending.user_id, data.get("code")):
         log_security_event(

@@ -11,14 +11,41 @@ For an Internet-facing installation, continue with
 - At least one SSH server that the WebSSH container can reach.
 - A modern browser.
 
-## Option 1: Docker Compose
+## Option 1: One-command installer
+
+The repository ships an installer that prepares the deployment directory and
+starts WebSSH in one step. It generates `SECRET_KEY`, writes `.env` and
+`docker-compose.yml`, and waits for `/ready`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zhengwuji/web-ssh/main/install.sh | sh
+```
+
+PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/zhengwuji/web-ssh/main/install.ps1 | iex
+```
+
+Useful flags:
+
+```bash
+./install.sh --port 8443 --tls self-signed --domain webssh.lan
+./install.sh --mode source --dir /opt/webssh --no-start
+./install.sh --allow-internal-ssh
+```
+
+The installer is idempotent: re-running it reuses the existing `SECRET_KEY` and
+TLS material. It never prints the generated secret.
+
+## Option 2: Docker Compose
 
 Download the homelab Compose file and start WebSSH:
 
 ```bash
 mkdir webssh-deployment
 cd webssh-deployment
-curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/zhengwuji/web-ssh/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -28,14 +55,14 @@ PowerShell:
 New-Item -ItemType Directory -Path webssh-deployment
 Set-Location webssh-deployment
 Invoke-WebRequest `
-  https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.yml `
+  https://raw.githubusercontent.com/zhengwuji/web-ssh/main/docker-compose.yml `
   -OutFile docker-compose.yml
 docker compose up -d
 ```
 
 Open `http://localhost:5000` or replace `localhost` with the host address.
 
-## Option 2: Docker run
+## Option 3: Docker run
 
 ```bash
 docker run -d \
@@ -44,7 +71,7 @@ docker run -d \
   -e CORS_ORIGINS=http://localhost:5000 \
   -v webssh_data:/app/data \
   --restart unless-stopped \
-  ghcr.io/bifrost0x/webssh:latest
+  ghcr.io/zhengwuji/web-ssh:latest
 ```
 
 The named volume is essential. It preserves users, settings, keys, host trust,
@@ -112,6 +139,11 @@ The base Compose file intentionally configures:
 
 These defaults are convenient on a trusted LAN but are not a production
 security profile.
+
+The one-command installer tightens three of them while keeping the homelab
+profile: exact `CORS_ORIGINS` instead of a wildcard, `ALLOW_CORS_WILDCARD=false`,
+and `BLOCK_INTERNAL_SSH=true` unless you pass `--allow-internal-ssh`. It also
+sets `SESSION_COOKIE_SECURE=true` whenever TLS is enabled.
 
 ## Common first-start problems
 

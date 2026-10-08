@@ -1404,6 +1404,7 @@ class SFTPFileManager {
         this.actionSheet = modal.querySelector('.fm-action-sheet');
 
         this.createQuickConnectModal();
+        this.createQuickHostKeyModal();
 
         this.setupEventListeners();
     }
@@ -1531,6 +1532,95 @@ class SFTPFileManager {
             e.preventDefault();
             this.submitQuickConnect();
         });
+    }
+
+    createQuickHostKeyModal() {
+        const modal = document.createElement('div');
+        modal.id = 'fmQuickHostKeyModal';
+        modal.className = 'modal modal-small ssh-auth-banner-modal';
+        modal.setAttribute('role', 'alertdialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'fmQuickHostKeyTitle');
+        modal.setAttribute('aria-describedby', 'fmQuickHostKeyHint');
+        modal.setAttribute('aria-hidden', 'true');
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="fmQuickHostKeyTitle" data-i18n="connection.hostKeyTitle">New SSH Host Key</h2>
+                </div>
+                <div class="modal-body ssh-auth-banner-body">
+                    <p id="fmQuickHostKeyHint" data-i18n="connection.hostKeyHint">The server presented a host key WebSSH has not seen before. Verify the fingerprint through a trusted channel before trusting it.</p>
+                    <p class="ssh-auth-banner-target" id="fmQuickHostKeyTarget"></p>
+                    <pre class="ssh-auth-banner-text" id="fmQuickHostKeyFingerprint" tabindex="0"></pre>
+                    <div class="ssh-auth-banner-actions">
+                        <button type="button" class="btn btn-secondary" id="fmQuickHostKeyReject" data-i18n="connection.hostKeyReject">Cancel connection</button>
+                        <button type="button" class="btn btn-primary" id="fmQuickHostKeyAccept" data-i18n="connection.hostKeyAccept">Trust and connect</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        this.quickHostKeyModal = modal;
+        this.quickHostKeyPrompt = null;
+
+        document.getElementById('fmQuickHostKeyReject').addEventListener('click', () => {
+            this.answerQuickHostKeyPrompt(false);
+        });
+        document.getElementById('fmQuickHostKeyAccept').addEventListener('click', () => {
+            this.answerQuickHostKeyPrompt(true);
+        });
+    }
+
+    closeQuickHostKeyPrompt() {
+        const hadPrompt = this.quickHostKeyPrompt !== null;
+        this.quickHostKeyPrompt = null;
+        if (this.quickHostKeyModal) {
+            if (window.ModalManager && typeof window.ModalManager.close === 'function') {
+                window.ModalManager.close(this.quickHostKeyModal);
+            } else {
+                this.quickHostKeyModal.classList.remove('show');
+                this.quickHostKeyModal.setAttribute('aria-hidden', 'true');
+            }
+        }
+        return hadPrompt;
+    }
+
+    answerQuickHostKeyPrompt(accepted) {
+        const prompt = this.quickHostKeyPrompt;
+        if (!prompt) return;
+        this.closeQuickHostKeyPrompt();
+        this.socket.emit('ssh_host_key_decision', {
+            prompt_id: prompt.promptId,
+            accepted: accepted === true,
+        });
+    }
+
+    handleQuickHostKeyPrompt(data) {
+        if (!data || data.flow !== 'quick') return;
+        if (
+            typeof data.prompt_id !== 'string'
+            || typeof data.host !== 'string'
+            || typeof data.fingerprint !== 'string'
+            || typeof data.key_type !== 'string'
+        ) {
+            return;
+        }
+        this.quickHostKeyPrompt = { promptId: data.prompt_id };
+        const target = document.getElementById('fmQuickHostKeyTarget');
+        if (target) {
+            const label = this.t('connection.authBannerTarget', 'Target');
+            target.textContent = `${label}: ${data.host} · ${data.key_type}`;
+        }
+        const fingerprint = document.getElementById('fmQuickHostKeyFingerprint');
+        if (fingerprint) fingerprint.textContent = data.fingerprint;
+        if (this.quickHostKeyModal) {
+            if (window.ModalManager && typeof window.ModalManager.open === 'function') {
+                window.ModalManager.open(this.quickHostKeyModal);
+            } else {
+                this.quickHostKeyModal.classList.add('show');
+                this.quickHostKeyModal.setAttribute('aria-hidden', 'false');
+            }
+        }
     }
 
     setupEventListeners() {
@@ -1875,8 +1965,13 @@ class SFTPFileManager {
             this.handleQuickConnectSuccess(data);
         });
 
+        this.socket.on('ssh_host_key_confirm', (data) => {
+            this.handleQuickHostKeyPrompt(data);
+        });
+
         this.socket.on('disconnect', () => {
             this.gatewayQuickRequestId = null;
+            this.closeQuickHostKeyPrompt();
         });
 
         this.socket.on('quick_connect_error', (data) => {
@@ -2966,7 +3061,7 @@ class SFTPFileManager {
             return;
         }
 
-        const profile = (this.qcProfiles || []).find(p => p.id == profileId);
+        const profile = (this.qcProfiles || []).find(p => p.id === profileId);
         if (!profile) return;
 
         document.getElementById('fmQcHost').value = profile.host || '';
@@ -2988,6 +3083,9 @@ class SFTPFileManager {
     }
 
     closeQuickConnect() {
+        if (this.quickHostKeyPrompt) {
+            this.answerQuickHostKeyPrompt(false);
+        }
         if (this.gatewayQuickRequestId) {
             const id = this.gatewayQuickRequestId;
             this.socket.emit('ssh_gateway_quick_cancel', {client_request_id: id}, result => {
@@ -5002,7 +5100,15 @@ class SFTPFileManager {
             destinationSourceId: targetSourceId,
         });
 
+        // Bound the ack wait: a lost server response must fail the queue
+        // entry instead of leaving it in 'starting' forever.
         const acknowledgement = await new Promise(resolve => {
+            let settled = false;
+            const ackGuard = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                resolve(null);
+            }, 15000);
             this.socket.emit('transfer_server_to_server', {
                 source_id: sourceId,
                 source_path: sourcePath,
@@ -5011,7 +5117,12 @@ class SFTPFileManager {
                 is_dir: item.is_dir,
                 conflict_policy: conflictPolicy,
                 request_id: requestId,
-            }, response => resolve(response));
+            }, response => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(ackGuard);
+                resolve(response);
+            });
         });
         if (!acknowledgement || !acknowledgement.success
                 || !this.matchesS2SResponse(acknowledgement)) {
@@ -6258,6 +6369,14 @@ class SFTPFileManager {
                 const key = el.getAttribute('data-i18n-aria-label');
                 const translation = window.i18n.t(key);
                 if (translation) el.setAttribute('aria-label', translation);
+            });
+        }
+
+        if (this.quickHostKeyModal) {
+            this.quickHostKeyModal.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                const translation = window.i18n.t(key);
+                if (translation) el.textContent = translation;
             });
         }
     }

@@ -7,7 +7,7 @@ hosted control plane.
 
 This Wiki is the long-form operator and user guide. For the compact project
 overview, screenshots, release badges, and source code, visit the
-[WebSSH repository](https://github.com/bifrost0x/webssh).
+[WebSSH repository](https://github.com/zhengwuji/web-ssh).
 
 ## What WebSSH provides
 
@@ -48,7 +48,7 @@ selected SSH session across desktop, tablet, and mobile layouts.
 
 ## Deployment model at a glance
 
-![WebSSH trust boundaries from the browser through the single WebSSH process to owned SSH and SFTP targets](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/system-trust-boundaries.png?raw=true)
+![WebSSH trust boundaries from the browser through the single WebSSH process to owned SSH and SFTP targets](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/system-trust-boundaries.png?raw=true)
 
 The supported path keeps authentication, ownership checks, network policy,
 host-key verification, bounded runtime work, persisted state, and audit records
@@ -106,9 +106,9 @@ security boundary, activation procedure, and rollback path.
 
 ## Useful project links
 
-- [Source repository](https://github.com/bifrost0x/webssh)
-- [Container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh)
-- [Issues](https://github.com/bifrost0x/webssh/issues)
-- [Discussions](https://github.com/bifrost0x/webssh/discussions)
-- [Security advisories](https://github.com/bifrost0x/webssh/security/advisories)
-- [Interactive code graph](https://bifrost0x.github.io/webssh/code-graph/)
+- [Source repository](https://github.com/zhengwuji/web-ssh)
+- [Container image](https://github.com/zhengwuji/web-ssh/pkgs/container/webssh)
+- [Issues](https://github.com/zhengwuji/web-ssh/issues)
+- [Discussions](https://github.com/zhengwuji/web-ssh/discussions)
+- [Security advisories](https://github.com/zhengwuji/web-ssh/security/advisories)
+- [Interactive code graph](https://zhengwuji.github.io/web-ssh/code-graph/)

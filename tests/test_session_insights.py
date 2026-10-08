@@ -608,3 +608,43 @@ def test_collect_linux_stats_keeps_other_channel_rejections_retryable(monkeypatc
 
     assert stats is None
     assert error == 'transient'
+
+
+def test_parse_linux_stats_collects_hostname_and_multiple_mounts():
+    from app.session_insights import parse_linux_stats
+
+    stats = parse_linux_stats(
+        "cpu 10 0 20 70 0 0 0 0 0 0\n"
+        "hostname=cool-laser-3.localdomain\n"
+        "disk_mount=/|39768444|7277568|30463748|19\n"
+        "disk_mount=/boot|1403712|218624|1185088|16\n"
+    )
+
+    assert stats['hostname'] == 'cool-laser-3.localdomain'
+    assert [entry['mount'] for entry in stats['disks']] == ['/', '/boot']
+    # Legacy single-disk view derives from the root mount when the
+    # dedicated df -Pk / block produced no output.
+    assert stats['disk']['mount' if False else 'total_kib'] == 39768444
+
+
+def test_parse_linux_stats_caps_disk_mounts_at_eight():
+    from app.session_insights import parse_linux_stats
+
+    lines = [
+        f"disk_mount=/mnt{index}|1000|500|500|50"
+        for index in range(12)
+    ]
+    stats = parse_linux_stats("\n".join(lines) + "\n")
+
+    assert len(stats['disks']) == 8
+
+
+def test_parse_linux_stats_rejects_unsafe_disk_mount_values():
+    from app.session_insights import parse_linux_stats
+
+    stats = parse_linux_stats(
+        "disk_mount=/ok|1000|500|500|50\n"
+        "disk_mount=/bad|pipe|1000|500|500|50\n"
+    )
+
+    assert [entry['mount'] for entry in stats['disks']] == ['/ok']

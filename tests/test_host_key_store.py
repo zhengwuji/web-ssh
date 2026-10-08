@@ -935,3 +935,84 @@ def test_add_file_entry_rejects_invalid_unicode(tmp_path):
 
     assert entry is None
     assert error == "Invalid known_hosts entry"
+
+
+def test_missing_policy_without_callback_records_silently(tmp_path):
+    store = HostKeyStore(9, tmp_path / "known_hosts", tmp_path / "users")
+    client = paramiko.SSHClient()
+    key = _key()
+
+    store.missing_key_policy().missing_host_key(client, "host.example", key)
+
+    assert paramiko.HostKeys(str(store.user_path)).lookup(
+        "host.example"
+    )[key.get_name()] == key
+
+
+def test_missing_policy_with_accepted_callback_records(tmp_path):
+    store = HostKeyStore(9, tmp_path / "known_hosts", tmp_path / "users")
+    client = paramiko.SSHClient()
+    key = _key()
+    seen = {}
+
+    def accept(hostname, key_type, fingerprint, context):
+        seen.update(
+            hostname=hostname,
+            key_type=key_type,
+            fingerprint=fingerprint,
+            context=context,
+        )
+        return True
+
+    store.missing_key_policy(
+        decision_callback=accept, context="target"
+    ).missing_host_key(client, "host.example", key)
+
+    assert seen["hostname"] == "host.example"
+    assert seen["key_type"] == key.get_name()
+    assert seen["context"] == "target"
+    assert len(seen["fingerprint"].split(":")) == 16
+    assert paramiko.HostKeys(str(store.user_path)).lookup(
+        "host.example"
+    )[key.get_name()] == key
+
+
+def test_missing_policy_with_declined_callback_raises_and_records_nothing(tmp_path):
+    from app.host_key_store import UnconfirmedHostKeyError
+
+    store = HostKeyStore(9, tmp_path / "known_hosts", tmp_path / "users")
+    client = paramiko.SSHClient()
+    key = _key()
+
+    with pytest.raises(UnconfirmedHostKeyError) as excinfo:
+        store.missing_key_policy(
+            decision_callback=lambda *args: False, context="target"
+        ).missing_host_key(client, "host.example", key)
+
+    assert excinfo.value.hostname == "host.example"
+    assert excinfo.value.key_type == key.get_name()
+    assert ":" in excinfo.value.fingerprint
+    assert not store.user_path.exists()
+    assert client.get_host_keys().lookup("host.example") is None
+
+
+def test_unconfirmed_key_is_trusted_after_later_confirmation(tmp_path):
+    from app.host_key_store import UnconfirmedHostKeyError
+
+    store = HostKeyStore(9, tmp_path / "known_hosts", tmp_path / "users")
+    client = paramiko.SSHClient()
+    key = _key()
+    policy = store.missing_key_policy(
+        decision_callback=lambda *args: False, context="target"
+    )
+
+    with pytest.raises(UnconfirmedHostKeyError):
+        policy.missing_host_key(client, "host.example", key)
+
+    # Same key presented again after the user accepts through the prompt.
+    store.missing_key_policy(
+        decision_callback=lambda *args: True, context="target"
+    ).missing_host_key(client, "host.example", key)
+    assert paramiko.HostKeys(str(store.user_path)).lookup(
+        "host.example"
+    )[key.get_name()] == key

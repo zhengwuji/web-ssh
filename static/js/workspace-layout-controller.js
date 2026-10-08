@@ -9,7 +9,7 @@
 }(typeof window !== 'undefined' ? window : globalThis, function (root) {
     'use strict';
 
-    const CONTEXTS = Object.freeze(['files', 'commands', 'diagnostics', 'notes']);
+    const CONTEXTS = Object.freeze(['files', 'commands', 'diagnostics', 'monitor', 'notes']);
     const CONTEXT_STORAGE_KEY = 'webssh.workspace.lastContext';
     const CONTEXT_WIDTH_STORAGE_KEY = 'webssh.workspace.contextWidth';
     const CONTEXT_WIDTH_MODE_STORAGE_KEY = 'webssh.workspace.contextWidthMode';
@@ -108,6 +108,7 @@
             ['files', false],
             ['commands', true],
             ['diagnostics', false],
+            ['monitor', false],
             ['notes', true],
         ]);
         const cleanup = [];
@@ -206,7 +207,7 @@
 
         function fallbackContext() {
             if (availability.get(lastContext)) return lastContext;
-            return ['notes', 'commands', 'files', 'diagnostics']
+            return ['notes', 'commands', 'files', 'diagnostics', 'monitor']
                 .find(name => availability.get(name)) || null;
         }
 

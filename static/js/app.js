@@ -1,11 +1,24 @@
 (function() {
     'use strict';
 
-    window.addEventListener('unhandledrejection', () => {
-        console.error('[WebSSH] Unhandled promise rejection');
+    window.addEventListener('unhandledrejection', event => {
+        const reason = event?.reason;
+        const detail = reason instanceof Error
+            ? `${reason.message}\n${reason.stack || ''}`
+            : String(reason ?? 'unknown');
+        console.error('[WebSSH] Unhandled promise rejection:', detail);
     });
 
-    window.addEventListener('error', () => {
+    window.addEventListener('error', event => {
+        // Event.message/filename are attacker-controllable on cross-origin
+        // scripts; only genuine Error objects are safe to echo.
+        if (event?.error instanceof Error) {
+            console.error(
+                '[WebSSH] Uncaught browser error:',
+                `${event.error.message}\n${event.error.stack || ''}`,
+            );
+            return;
+        }
         console.error('[WebSSH] Uncaught browser error');
     });
 
@@ -1357,8 +1370,74 @@
         window.ModalManager.open(document.getElementById('sshAuthBannerModal'));
     });
 
-    socket.io.on('reconnect_attempt', (attempt) => {
-        const reconnectBar = document.getElementById('reconnectBar');
+    let pendingHostKeyPrompt = null;
+
+    function closeHostKeyPrompt() {
+        const hadPrompt = pendingHostKeyPrompt !== null;
+        pendingHostKeyPrompt = null;
+        window.ModalManager.close(document.getElementById('sshHostKeyModal'));
+        const connectionModal = document.getElementById('connectionModal');
+        if (hadPrompt && connectionModal?.classList.contains('show')) {
+            window.ModalManager.activeModal = connectionModal;
+        }
+        return hadPrompt;
+    }
+
+    function answerHostKeyPrompt(accepted) {
+        if (!pendingHostKeyPrompt) return;
+        const promptId = pendingHostKeyPrompt.promptId;
+        closeHostKeyPrompt();
+        socket.emit('ssh_host_key_decision', {
+            prompt_id: promptId,
+            accepted: accepted === true,
+        });
+    }
+
+    socket.on('ssh_host_key_confirm', data => {
+        if (
+            !data
+            || typeof data.prompt_id !== 'string'
+            || typeof data.fingerprint !== 'string'
+            || typeof data.key_type !== 'string'
+        ) {
+            return;
+        }
+        if (data.flow === 'quick') {
+            // Quick SFTP host-key prompts are owned by sftp-file-manager.js.
+            return;
+        }
+        const requestId = typeof data.client_request_id === 'string'
+            ? data.client_request_id
+            : null;
+        const isExpectedRequest = requestId && (
+            requestId === currentConnectRequestId
+            || requestId.startsWith('reconnect_')
+        );
+        if (
+            !isExpectedRequest
+            || cancelledConnectRequestIds.has(requestId)
+        ) {
+            socket.emit('ssh_host_key_decision', {
+                prompt_id: data.prompt_id,
+                accepted: false,
+            });
+            return;
+        }
+        pendingHostKeyPrompt = { promptId: data.prompt_id, requestId };
+        const contextKey = data.context === 'jump_host'
+            ? 'connection.authBannerJumpHost'
+            : 'connection.authBannerTarget';
+        const contextLabel = window.i18n
+            ? i18n.t(contextKey)
+            : (data.context === 'jump_host' ? 'Jump host' : 'Target host');
+        const target = [data.host, data.port].filter(value => value !== undefined).join(':');
+        document.getElementById('sshHostKeyTarget').textContent =
+            `${contextLabel}: ${target} · ${data.key_type}`;
+        document.getElementById('sshHostKeyFingerprint').textContent = data.fingerprint;
+        window.ModalManager.open(document.getElementById('sshHostKeyModal'));
+    });
+
+    socket.io.on('reconnect_attempt', (attempt) => {        const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar) {
             const textEl = reconnectBar.querySelector('.reconnect-text');
             if (textEl) {
@@ -3109,6 +3188,13 @@
         );
         document.getElementById('sshAuthBannerContinue')?.addEventListener(
             'click', () => answerAuthBannerPrompt(true)
+        );
+
+        document.getElementById('sshHostKeyReject')?.addEventListener(
+            'click', () => answerHostKeyPrompt(false)
+        );
+        document.getElementById('sshHostKeyAccept')?.addEventListener(
+            'click', () => answerHostKeyPrompt(true)
         );
 
         document.addEventListener('click', (e) => {

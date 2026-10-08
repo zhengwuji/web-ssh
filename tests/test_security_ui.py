@@ -290,6 +290,10 @@ def test_login_shows_only_enabled_external_authentication(
 ):
     import config
 
+    # Non-production deployments enable passkeys by default, so pin both
+    # external factors off before rendering the "disabled" baseline.
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", False)
+    monkeypatch.setattr(config, "OIDC_ENABLED", False)
     _create_user(app, "login_options_user")
     disabled = client.get("/login")
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)

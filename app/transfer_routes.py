@@ -1,7 +1,6 @@
 """Bounded HTTP routes for user-owned SFTP transfers."""
 
 import posixpath
-import re
 import secrets
 import shlex
 import stat
@@ -42,6 +41,72 @@ from .transfer_errors import classify_transfer_failure
 
 
 TRANSFER_CHUNK_SIZE = config.CHUNK_SIZE
+
+# Progress watermark: transfer_progress events fire at most every 250 ms or
+# after a >=1% move, instead of once per 64 KiB chunk (~7,800 events for a
+# 500 MB download). The first update and flush() at completion always emit.
+TRANSFER_PROGRESS_INTERVAL_SECONDS = 0.25
+TRANSFER_PROGRESS_MIN_FRACTION = 0.01
+
+# Download filename sanitising: control characters are dropped, every other
+# non-whitelisted ASCII byte becomes '_'. A single translation table replaces
+# the previous per-character regex match on this response path.
+_DOWNLOAD_FILENAME_SAFE = frozenset(
+    'abcdefghijklmnopqrstuvwxyz'
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._ -'
+)
+_DOWNLOAD_FILENAME_TRANSLATION = {
+    **{code: None for code in range(32)},
+    127: None,
+    **{
+        code: '_'
+        for code in range(32, 127)
+        if chr(code) not in _DOWNLOAD_FILENAME_SAFE
+    },
+}
+
+
+class TransferProgressThrottle:
+    """Bound progress emission by time and percentage watermarks."""
+
+    def __init__(self, emit):
+        self._emit = emit
+        self._last_time = 0.0
+        self._last_sent_transferred = None
+        self._last_sent_total = None
+        self._dirty = False
+
+    def __call__(self, transferred, total=None):
+        self._dirty = True
+        if self._last_sent_transferred is None:
+            self._send(transferred, total)
+            return
+        if total is not None and total != self._last_sent_total:
+            self._send(transferred, total)
+            return
+        if transferred == self._last_sent_transferred:
+            return
+        moved = abs(transferred - self._last_sent_transferred)
+        reference = total if total else max(transferred, 1)
+        significant = moved >= reference * TRANSFER_PROGRESS_MIN_FRACTION
+        elapsed = time.monotonic() - self._last_time >= TRANSFER_PROGRESS_INTERVAL_SECONDS
+        if significant or elapsed:
+            self._send(transferred, total)
+
+    def _send(self, transferred, total):
+        if total is None:
+            self._emit(transferred)
+        else:
+            self._emit(transferred, total)
+        self._last_time = time.monotonic()
+        self._last_sent_transferred = transferred
+        self._last_sent_total = total
+        self._dirty = False
+
+    def flush(self, transferred, total=None):
+        if self._dirty:
+            self._send(transferred, total)
+
 transfer_blueprint = Blueprint('transfers', __name__)
 # This manager intentionally lives for the worker lifetime.  A request-local
 # instance would make one-use tokens and reservations meaningless.
@@ -255,21 +320,29 @@ def _upload_to_backend(
 
 def _stream_download_chunks(remote_file, record, user_id, size):
     transferred = 0
-    for chunk in read_bounded_remote(
-        remote_file,
-        chunk_size=TRANSFER_CHUNK_SIZE,
-        max_bytes=config.MAX_DOWNLOAD_SIZE,
-        cancelled=record.cancel_event.is_set,
-    ):
-        transferred += len(chunk)
-        from . import socketio
+    from . import socketio
+
+    def emit_progress(sent, _total=size):
         socketio.emit('transfer_progress', {
             'transfer_id': record.transfer_id,
             'direction': 'download',
-            'transferred': transferred,
-            'total': size,
+            'transferred': sent,
+            'total': _total,
         }, room=f'user_{user_id}')
-        yield chunk
+
+    progress = TransferProgressThrottle(emit_progress)
+    try:
+        for chunk in read_bounded_remote(
+            remote_file,
+            chunk_size=TRANSFER_CHUNK_SIZE,
+            max_bytes=config.MAX_DOWNLOAD_SIZE,
+            cancelled=record.cancel_event.is_set,
+        ):
+            transferred += len(chunk)
+            progress(transferred)
+            yield chunk
+    finally:
+        progress.flush(transferred)
     return transferred
 
 
@@ -373,12 +446,7 @@ def _content_disposition(filename):
     original = str(filename).rsplit('/', 1)[-1] or 'download'
     normalized = unicodedata.normalize('NFKD', original)
     ascii_name = normalized.encode('ascii', 'ignore').decode('ascii')
-    ascii_name = ''.join(
-        '' if ord(character) < 32 or ord(character) == 127
-        else character if re.match(r'[A-Za-z0-9._ -]', character)
-        else '_'
-        for character in ascii_name
-    ) or 'download'
+    ascii_name = ascii_name.translate(_DOWNLOAD_FILENAME_TRANSLATION) or 'download'
     return (
         f'attachment; filename="{ascii_name}"; '
         f"filename*=UTF-8''{quote(original, safe='')}"
@@ -610,29 +678,6 @@ def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
     return archive_path, size
 
 
-def _create_private_temporary_archive(temp_directory):
-    temporary = tempfile.NamedTemporaryFile(
-        suffix='.zip',
-        delete=False,
-        dir=temp_directory,
-    )
-    archive_path = Path(temporary.name)
-    try:
-        temporary.close()
-        archive_path.chmod(0o600)
-    except BaseException:
-        try:
-            temporary.close()
-        except BaseException:
-            pass
-        try:
-            archive_path.unlink(missing_ok=True)
-        except BaseException:
-            pass
-        raise
-    return archive_path
-
-
 def _build_backend_zip_to_disk(
     source,
     remote_folder,
@@ -652,7 +697,9 @@ def _build_backend_zip_to_disk(
     root = remote_folder.rstrip('/')
     temp_directory = Path(temp_dir)
     temp_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    archive_path = _create_private_temporary_archive(temp_directory)
+    archive_path = sftp_handler.create_private_temporary_archive(
+        temp_directory
+    )
 
     try:
         iterator_kwargs = {
@@ -665,25 +712,11 @@ def _build_backend_zip_to_disk(
             iterator_kwargs['_expected_identities'] = (
                 expected_root_identities
             )
-        entries = list(source.backend.iter_tree(
+        entries = source.backend.iter_tree(
             source,
             remote_folder,
             **iterator_kwargs,
-        ))
-        if any(entry.get('is_symlink') for entry in entries):
-            raise RemoteTransferError('Reparse points are not supported')
-        declared_total = 0
-        for entry in entries:
-            if entry.get('is_dir'):
-                continue
-            size = int(entry.get('size', 0))
-            if size < 0:
-                raise RemoteTransferLimitExceeded('Invalid remote file size')
-            declared_total += size
-            if declared_total > max_bytes:
-                raise RemoteTransferLimitExceeded(
-                    'Folder exceeds transfer size limit'
-                )
+        )
 
         transferred = 0
         with zipfile.ZipFile(
@@ -693,6 +726,10 @@ def _build_backend_zip_to_disk(
             compresslevel=6,
         ) as archive:
             for entry in entries:
+                if entry.get('is_symlink'):
+                    raise RemoteTransferError(
+                        'Reparse points are not supported'
+                    )
                 if cancel_event.is_set():
                     raise RemoteTransferCancelled('Transfer cancelled')
                 entry_path = entry.get('path')
@@ -958,6 +995,11 @@ def download_folder_transfer(token):
         outcome = 'failed'
         failure = None
         transferred = 0
+        progress = TransferProgressThrottle(
+            lambda sent, total: _emit_download_progress(
+                record, user_id, sent, total
+            )
+        )
         try:
             if remote_archive is not None:
                 for chunk in sftp_handler.stream_remote_zip(
@@ -967,12 +1009,7 @@ def download_folder_transfer(token):
                     chunk_size=TRANSFER_CHUNK_SIZE,
                 ):
                     transferred += len(chunk)
-                    _emit_download_progress(
-                        record,
-                        user_id,
-                        transferred,
-                        remote_lease.size,
-                    )
+                    progress(transferred, remote_lease.size)
                     yield chunk
             else:
                 with open(local_archive, 'rb') as archive:
@@ -983,9 +1020,7 @@ def download_folder_transfer(token):
                         if not chunk:
                             break
                         transferred += len(chunk)
-                        _emit_download_progress(
-                            record, user_id, transferred, archive_size
-                        )
+                        progress(transferred, archive_size)
                         yield chunk
             remote_reader_stack.close()
             outcome = 'completed'
@@ -1086,6 +1121,9 @@ def upload_transfer(token):
             return _json_failure(failure)
 
         transferred = 0
+        upload_progress = TransferProgressThrottle(
+            lambda count: _emit_upload_progress(record, user_id, count)
+        )
         try:
             active_source = _resolve_transfer_source(record, user_id)
             if _transfer_backend(active_source) is None:
@@ -1096,9 +1134,7 @@ def upload_transfer(token):
                     chunk_size=TRANSFER_CHUNK_SIZE,
                     max_bytes=config.MAX_UPLOAD_SIZE,
                     cancelled=record.cancel_event.is_set,
-                    progress=lambda count: _emit_upload_progress(
-                        record, user_id, count
-                    ),
+                    progress=upload_progress,
                     replace=record.metadata.get('conflict_policy') == 'replace',
                 )
             else:
@@ -1110,11 +1146,10 @@ def upload_transfer(token):
                     max_bytes=config.MAX_UPLOAD_SIZE,
                     cancel_event=record.cancel_event,
                     cancelled=record.cancel_event.is_set,
-                    progress=lambda count: _emit_upload_progress(
-                        record, user_id, count
-                    ),
+                    progress=upload_progress,
                     replace=record.metadata.get('conflict_policy') == 'replace',
                 )
+            upload_progress.flush(transferred)
         except sftp_handler.TransferCancelled:
             failure = classify_transfer_failure(
                 sftp_handler.TransferCancelled(),

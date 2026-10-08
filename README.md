@@ -7,20 +7,20 @@
 </p>
 
 <p align="center">
-  <a href="https://bifrost0x.github.io/webssh/">Product site</a> ·
-  <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
+  <a href="https://zhengwuji.github.io/web-ssh/">Product site</a> ·
+  <a href="https://github.com/zhengwuji/web-ssh/wiki">Documentation</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
-  <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
-  <a href="https://github.com/bifrost0x/webssh/discussions">Discussions</a>
+  <a href="https://github.com/zhengwuji/web-ssh/pkgs/container/webssh">Container image</a> ·
+  <a href="https://github.com/zhengwuji/web-ssh/discussions">Discussions</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/bifrost0x/webssh/actions/workflows/tests.yml"><img src="https://github.com/bifrost0x/webssh/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql"><img src="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh"><img src="https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&logoColor=white" alt="GitHub Container Registry"></a>
+  <a href="https://github.com/zhengwuji/web-ssh/actions/workflows/tests.yml"><img src="https://github.com/zhengwuji/web-ssh/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/zhengwuji/web-ssh/actions/workflows/github-code-scanning/codeql"><img src="https://github.com/zhengwuji/web-ssh/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/zhengwuji/web-ssh/pkgs/container/webssh"><img src="https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&logoColor=white" alt="GitHub Container Registry"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11 or newer">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT License"></a>
-  <a href="https://bifrost0x.github.io/webssh/code-graph/"><img src="https://img.shields.io/badge/Interaktive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
+  <a href="https://zhengwuji.github.io/web-ssh/code-graph/"><img src="https://img.shields.io/badge/Interaktive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
 </p>
 
 ## Product tour
@@ -36,6 +36,61 @@ a hosted control plane or runtime CDN dependencies.
 After an administrator enables the optional gateway integration in Settings → Integrations,
 connect through an existing SSH gateway with a user:target username. Disabled by default. See the
 [Warpgate integration guide](docs/warpgate.md) for authentication and target requirements.
+
+## 中文说明：本次更新与使用
+
+### 本次更新内容
+
+- **一键命令搭建。** 新增 `install.sh`（Linux/macOS/Git Bash）与 `install.ps1`（Windows）。
+  一条命令生成 `SECRET_KEY`、`.env` 与 `docker-compose.yml` 并启动服务；可重复执行，且从不打印密钥。
+- **安全加固。**
+  - 修复 6 处 `$` 锚定 `re.match` 的换行绕过（`alice\n` 曾能通过用户名、主机名与 tmux 名校验），
+    统一改为 `re.fullmatch` 并预编译；新增 `tests/test_input_validation_hardening.py`（58 项断言）。
+  - TLS 自签证书首次生成返回码 `2` 被误判为失败的问题，已在 `entrypoint.sh` 与安装脚本中修复。
+  - 安装脚本写入精确 `CORS_ORIGINS`、`ALLOW_CORS_WILDCARD=false`，默认 `BLOCK_INTERNAL_SSH=true`；
+    启用 TLS 时自动 `SESSION_COOKIE_SECURE=true`，并补上真实域名的 Origin 白名单。
+- **效率重构。** 正则统一预编译与缓存（`host_key_store` 的动态主机模式使用 `lru_cache`）、
+  下载文件名清洗改用 `str.translate`、`ssh_manager` 去除三处函数内重复 `import re`、
+  `ssh_input` 热路径的字段集合提升为模块级 `frozenset`。
+- **主机密钥确认。** 快速连接（Quick Connect）同样弹出主机密钥确认框；拒绝、超时或关闭表单时
+  返回明确的 `host_key_unconfirmed` 错误码与本地化提示；SMB 与终端路径行为不变。
+- **TLS 与监控验收。** `WEBSSH_TLS_MODE=self-signed|acme|manual` 端到端实测通过；
+  监控面板在真实 Linux 会话上完成 22 项浏览器验收（渲染、4 秒轮询、语言切换、诊断抽屉）。
+- **门禁状态。** `pytest` 3503 项通过（仅 3 项 Windows 环境性失败）、`npm run test:js` 693/693、
+  `npm run lint:js` 0 错误、Playwright 端到端 185 项通过。
+
+### 使用说明
+
+一条命令部署（Docker，推荐）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zhengwuji/web-ssh/main/install.sh | sh
+```
+
+Windows（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/zhengwuji/web-ssh/main/install.ps1 | iex
+```
+
+可选参数：`--port`、`--dir`、`--tls off|self-signed|manual|acme`、`--domain`、`--email`、
+`--allow-internal-ssh`、`--no-start`、`--no-pull`。例如启用自签 HTTPS：
+
+```bash
+./install.sh --port 8443 --tls self-signed --domain webssh.lan
+```
+
+源码运行（不依赖 Docker，构建本地虚拟环境后由 gunicorn 直接提供服务）：
+
+```bash
+git clone https://github.com/zhengwuji/web-ssh.git
+cd web-ssh
+./install.sh --mode source --dir /opt/webssh --port 8443 --tls self-signed --domain webssh.lan
+```
+
+安装完成后：浏览器打开 `http://localhost:5000`（或你指定的端口），首次访问时立即创建管理员账号，
+`curl -fsS http://localhost:5000/ready` 应返回就绪状态。公网部署前请务必改用生产覆盖文件、
+精确 Origin、安全 Cookie、关闭浏览器注册，并保留一个可用的本地应急管理员。
 
 ## Why WebSSH
 
@@ -189,10 +244,29 @@ The supplied Compose file is intended for evaluation and trusted homelab
 networks. It stores the database, generated application secret, user data, and
 encrypted keys in the `webssh_data` volume.
 
+One command prepares a deployment directory (generated `SECRET_KEY`, `.env`,
+Compose file) and starts WebSSH:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zhengwuji/web-ssh/main/install.sh | sh
+```
+
+On Windows:
+
+```powershell
+irm https://raw.githubusercontent.com/zhengwuji/web-ssh/main/install.ps1 | iex
+```
+
+Both installers accept `--port`, `--dir`, `--tls off|self-signed|manual|acme`,
+`--domain`, `--allow-internal-ssh`, `--no-start`, and `--no-pull`. They are
+idempotent and never print the generated secret.
+
+Or do it by hand:
+
 ```bash
 mkdir webssh-deployment
 cd webssh-deployment
-curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/zhengwuji/web-ssh/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -207,13 +281,23 @@ docker compose ps
 curl -fsS http://localhost:5000/ready
 ```
 
+The installer also supports `--mode source`, which builds a local virtualenv
+from a source checkout and runs gunicorn directly. It enables HTTPS with a
+self-signed certificate in one step:
+
+```bash
+git clone https://github.com/zhengwuji/web-ssh.git
+cd webssh
+./install.sh --mode source --port 8443 --tls self-signed --domain webssh.lan
+```
+
 For an Internet-facing instance, do not expose this homelab configuration
 unchanged. Use the production overlay, an HTTPS reverse proxy, exact origins,
 secure cookies, disabled browser registration, internal-target blocking, and
 explicit trusted-proxy settings.
 
-Read the [Quick Start](https://github.com/bifrost0x/webssh/wiki/Quick-Start) or
-the complete [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment)
+Read the [Quick Start](https://github.com/zhengwuji/web-ssh/wiki/Quick-Start) or
+the complete [Production Deployment](https://github.com/zhengwuji/web-ssh/wiki/Production-Deployment)
 guide before accepting users. See [production container boundaries](docs/production-container.md)
 for the optional `docker-compose.hardened.yml` overlay, writable paths,
 configurable resource budgets, and LDAP/Tailscale constraints.
@@ -245,7 +329,7 @@ Keep these deployment contracts intact:
 - Backups can contain the persisted application secret and encrypted private
   keys together. Protect and test them accordingly.
 
-See the [Security Model and Hardening](https://github.com/bifrost0x/webssh/wiki/Security-Model-and-Hardening)
+See the [Security Model and Hardening](https://github.com/zhengwuji/web-ssh/wiki/Security-Model-and-Hardening)
 guide and the project's [security policy](SECURITY.md) before exposing WebSSH
 to untrusted networks.
 
@@ -253,48 +337,47 @@ to untrusted networks.
 
 The README is the project entry point. Detailed installation, operation,
 security, authentication, recovery, and development guidance lives in the
-[WebSSH Wiki](https://github.com/bifrost0x/webssh/wiki). Its
+[WebSSH Wiki](https://github.com/zhengwuji/web-ssh/wiki). Its
 [versioned source](docs/wiki/Home.md) is reviewed with the code through pull
 requests and published automatically after changes reach `main`.
 
 | Goal | Guide |
 |---|---|
-| Install with Docker | [Docker and Docker Compose](https://github.com/bifrost0x/webssh/wiki/Docker-and-Docker-Compose) |
-| Deploy behind HTTPS | [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment) |
-| Configure every setting | [Configuration Reference](https://github.com/bifrost0x/webssh/wiki/Configuration-Reference) |
-| Connect and verify hosts | [SSH Connections and Host Keys](https://github.com/bifrost0x/webssh/wiki/SSH-Connections-and-Host-Keys) |
-| Use terminal and tmux sessions | [Terminal and Persistent tmux Sessions](https://github.com/bifrost0x/webssh/wiki/Terminal-and-Persistent-tmux-Sessions) |
-| Work with files and transfers | [SFTP File Workspace and Transfers](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers) |
-| Configure authentication | [Authentication Overview](https://github.com/bifrost0x/webssh/wiki/Authentication-Overview) |
-| Run backup or restore | [Backup, Restore and Secret Rotation](https://github.com/bifrost0x/webssh/wiki/Backup-Restore-and-Secret-Rotation) |
-| Troubleshoot health checks | [Health Checks and Troubleshooting](https://github.com/bifrost0x/webssh/wiki/Health-Checks-and-Troubleshooting) |
-| Understand the runtime | [Architecture and Runtime Lifecycle](https://github.com/bifrost0x/webssh/wiki/Architecture-and-Runtime-Lifecycle) |
-| Develop and test locally | [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing) |
+| Install with Docker | [Docker and Docker Compose](https://github.com/zhengwuji/web-ssh/wiki/Docker-and-Docker-Compose) |
+| Deploy behind HTTPS | [Production Deployment](https://github.com/zhengwuji/web-ssh/wiki/Production-Deployment) |
+| Configure every setting | [Configuration Reference](https://github.com/zhengwuji/web-ssh/wiki/Configuration-Reference) |
+| Connect and verify hosts | [SSH Connections and Host Keys](https://github.com/zhengwuji/web-ssh/wiki/SSH-Connections-and-Host-Keys) |
+| Use terminal and tmux sessions | [Terminal and Persistent tmux Sessions](https://github.com/zhengwuji/web-ssh/wiki/Terminal-and-Persistent-tmux-Sessions) |
+| Work with files and transfers | [SFTP File Workspace and Transfers](https://github.com/zhengwuji/web-ssh/wiki/SFTP-File-Workspace-and-Transfers) |
+| Configure authentication | [Authentication Overview](https://github.com/zhengwuji/web-ssh/wiki/Authentication-Overview) |
+| Run backup or restore | [Backup, Restore and Secret Rotation](https://github.com/zhengwuji/web-ssh/wiki/Backup-Restore-and-Secret-Rotation) |
+| Troubleshoot health checks | [Health Checks and Troubleshooting](https://github.com/zhengwuji/web-ssh/wiki/Health-Checks-and-Troubleshooting) |
+| Understand the runtime | [Architecture and Runtime Lifecycle](https://github.com/zhengwuji/web-ssh/wiki/Architecture-and-Runtime-Lifecycle) |
+| Develop and test locally | [Development and Testing](https://github.com/zhengwuji/web-ssh/wiki/Development-and-Testing) |
 
 Additional project views:
 
 - [Roadmap and current release focus](ROADMAP.md)
 - [Project history and documented decisions](docs/project-history.md)
 - [Planning, milestones and release workflow](docs/project-planning.md)
-- [Product site](https://bifrost0x.github.io/webssh/)
-- [Interactive code graph](https://bifrost0x.github.io/webssh/code-graph/)
-- [Container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh)
+- [Product site](https://zhengwuji.github.io/web-ssh/)
+- [Interactive code graph](https://zhengwuji.github.io/web-ssh/code-graph/)
+- [Container image](https://github.com/zhengwuji/web-ssh/pkgs/container/webssh)
 
 ## Contributing and Support
 
 Bug reports and focused pull requests are welcome. For feature proposals and
-architecture ideas, start with [GitHub Discussions](https://github.com/bifrost0x/webssh/discussions)
+architecture ideas, start with [GitHub Discussions](https://github.com/zhengwuji/web-ssh/discussions)
 so the security and runtime boundaries can be reviewed before implementation.
 
-- Read [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing).
-- Use [Issues](https://github.com/bifrost0x/webssh/issues) for reproducible bugs.
+- Read [Development and Testing](https://github.com/zhengwuji/web-ssh/wiki/Development-and-Testing).
+- Use [Issues](https://github.com/zhengwuji/web-ssh/issues) for reproducible bugs.
 - Report vulnerabilities privately through
-  [GitHub Security Advisories](https://github.com/bifrost0x/webssh/security/advisories/new).
-- Support ongoing work through [Buy Me a Coffee](https://buymeacoffee.com/bifrost0x).
+  [GitHub Security Advisories](https://github.com/zhengwuji/web-ssh/security/advisories/new).
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=bifrost0x/webssh&type=date&legend=top-left)](https://www.star-history.com/?repos=bifrost0x%2Fwebssh&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=zhengwuji/web-ssh&type=date&legend=top-left)](https://www.star-history.com/?repos=zhengwuji%2Fweb-ssh&type=date&legend=top-left)
 
 ## License
 

@@ -4,8 +4,8 @@ Thanks for your interest in contributing! This project is open to contributions 
 
 ## Quick Links
 
-- [Report a Bug](https://github.com/bifrost0x/webssh/issues/new?template=bug_report.md)
-- [Request a Feature](https://github.com/bifrost0x/webssh/issues/new?template=feature_request.md)
+- [Report a Bug](https://github.com/zhengwuji/web-ssh/issues/new?template=bug_report.md)
+- [Request a Feature](https://github.com/zhengwuji/web-ssh/issues/new?template=feature_request.md)
 - [Security Issues](SECURITY.md) - Please don't open public issues for vulnerabilities
 - [Roadmap](ROADMAP.md) and [planning workflow](docs/project-planning.md)
 
@@ -20,7 +20,7 @@ Thanks for your interest in contributing! This project is open to contributions 
 
 ```bash
 # Clone the repository
-git clone https://github.com/bifrost0x/webssh.git
+git clone https://github.com/zhengwuji/web-ssh.git
 cd webssh
 
 # Create virtual environment
@@ -231,7 +231,7 @@ Be respectful and constructive. We're all here to build something useful.
 
 ## Questions?
 
-Reach out via issues or directly at dwight@scranton.de
+Reach out through the repository issue tracker at https://github.com/zhengwuji/web-ssh/issues
 
 ## License
 

@@ -1,13 +1,14 @@
 import paramiko
 from paramiko.auth_strategy import AuthStrategy, NoneAuth
+import re
 import shlex
 import time
 import uuid
 import socket
-from threading import Lock, Timer
+from threading import Event, Lock, Timer
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
-from .host_key_store import HostKeyStore
+from .host_key_store import HostKeyStore, UnconfirmedHostKeyError
 from .network_policy import (
     canonicalize_hostname,
     open_validated_socket,
@@ -32,6 +33,15 @@ sessions_lock = Lock()
 TMUX_KILL_TIMEOUT = 2.0
 TMUX_PROBE_TIMEOUT = 2.0
 SSH_AUTH_BANNER_MAX_CHARS = 16 * 1024
+# Reader-side micro-batching: coalesce burst output into one Socket.IO event
+# so per-chunk serialization and ACK reservations amortize. The window is far
+# below human-perceptible interactive latency.
+SSH_OUTPUT_BATCH_WINDOW = 0.03
+SSH_OUTPUT_BATCH_MAX_BYTES = 256 * 1024
+# Compiled once: this filter runs on every output chunk and every keystroke.
+# Only Device Attributes responses (ESC[c) are stripped; bare patterns were
+# removed because they corrupt legitimate output like "padding:0;color:red".
+_DEVICE_ATTRIBUTES_RESPONSE = re.compile(r'\x1b\[[?>]?[0-9;]*c')
 
 
 class TailscaleSSHAuthStrategy(AuthStrategy):
@@ -45,9 +55,14 @@ class TailscaleSSHAuthStrategy(AuthStrategy):
         yield NoneAuth(self.username)
 
 
-def _configure_host_key_trust(client, store):
+def _configure_host_key_trust(client, store, *, host_key_decision=None,
+                              context="target"):
     store.load_into(client)
-    client.set_missing_host_key_policy(store.missing_key_policy())
+    client.set_missing_host_key_policy(
+        store.missing_key_policy(
+            decision_callback=host_key_decision, context=context
+        )
+    )
 
 
 def _authentication_banner(transport):
@@ -147,6 +162,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           use_tmux=False, reconnect_tmux_name=None,
                           auth_type='password', startup_commands='',
                           auth_banner_decision=None,
+                          host_key_decision=None,
                           tailscale_authorization=None,
                           cancel_event=None, client_request_id=None,
                           jump_host_id=None, gateway_attempt=None):
@@ -273,7 +289,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 if gateway_attempt is not None:
                     gateway_attempt.own(validated_socket)
                     gateway_attempt.own(bastion_client)
-                _configure_host_key_trust(bastion_client, host_key_store)
+                _configure_host_key_trust(
+                    bastion_client,
+                    host_key_store,
+                    host_key_decision=host_key_decision,
+                    context='jump_host',
+                )
 
                 bastion_auth = {
                     'hostname': bastion_target.hostname,
@@ -316,6 +337,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     timeout=config.SSH_CONNECT_TIMEOUT,
                 )
                 log_info("Jump host connection established", bastion=proxy_jump_host)
+            except UnconfirmedHostKeyError:
+                return None, SSHConnectionError(
+                    "Connection stopped: jump host key was not accepted",
+                    code="host_key_unconfirmed",
+                    context="jump_host",
+                )
             except paramiko.BadHostKeyException:
                 log_warning(
                     "SSH host key changed",
@@ -370,7 +397,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 gateway_attempt.own(validated_socket)
             if bastion_client is not None:
                 gateway_attempt.own(bastion_client)
-        _configure_host_key_trust(client, host_key_store)
+        _configure_host_key_trust(
+            client,
+            host_key_store,
+            host_key_decision=host_key_decision,
+            context='target',
+        )
 
         auth_kwargs = {
             'hostname': host,
@@ -528,8 +560,6 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         session_id = str(uuid.uuid4())
 
-        time.sleep(0.1)
-
         with sessions_lock:
             if gateway_attempt is not None:
                 gateway_attempt.handoff(client, validated_socket, bastion_client)
@@ -560,6 +590,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'output_sequence': 0,
                 'quota_reservation': reservation,
                 'reader_handle': None,
+                # Guards per-session mutable data (output buffer, sequence,
+                # activity); the registry lock only guards membership.
+                '_lock': Lock(),
+                # Set by the connect handler once the SSHSession row is
+                # committed; wakes the output reader without DB polling.
+                'db_row_event': Event(),
             }
             connection_stored = True
 
@@ -646,6 +682,14 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         return session_id, None
 
+    except UnconfirmedHostKeyError:
+        # The browser already received the fingerprint prompt; this error only
+        # stops the connection attempt cleanly.
+        return None, SSHConnectionError(
+            "Connection stopped: host key was not accepted",
+            code="host_key_unconfirmed",
+            context="target",
+        )
     except paramiko.BadHostKeyException:
         log_warning(
             "SSH host key changed",
@@ -696,27 +740,43 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 pass
 
 def record_output(session_id, decoded_data, *, now=None):
-    """Append one output chunk and return its monotone session sequence."""
+    """Append one output chunk and return its monotone session sequence.
+
+    Locking: the registry lock is not taken here. ``sessions.get`` is an
+    atomic read, and the per-session lock protects the buffer counters, so
+    one session's output can no longer serialize against every other
+    session's chunks. A session popped between the fetch and the mutation
+    only writes into an orphaned dict, which nothing publishes.
+    """
     activity_time = time.time() if now is None else now
-    with sessions_lock:
-        session = sessions.get(session_id)
-        if not session or not session.get('connected'):
-            return None
-        sequence = session.get('output_sequence', 0) + 1
-        session['output_sequence'] = sequence
-        session['last_activity'] = activity_time
-        buf = session.get('output_buffer')
-        if buf is not None:
-            buf.append(decoded_data)
-            session['output_buffer_size'] += len(decoded_data)
-            while (
-                session['output_buffer_size']
-                > session.get('output_buffer_max', 512000)
-                and len(buf) > 1
-            ):
-                removed = buf.pop(0)
-                session['output_buffer_size'] -= len(removed)
-        return sequence
+    session = sessions.get(session_id)
+    if not session or not session.get('connected'):
+        return None
+    session_lock = session.get('_lock')
+    if session_lock is not None:
+        with session_lock:
+            return _record_output_locked(session, decoded_data, activity_time)
+    # Sessions created without a per-session lock (tests, legacy paths) still
+    # record; the GIL keeps the counter arithmetic itself safe.
+    return _record_output_locked(session, decoded_data, activity_time)
+
+
+def _record_output_locked(session, decoded_data, activity_time):
+    sequence = session.get('output_sequence', 0) + 1
+    session['output_sequence'] = sequence
+    session['last_activity'] = activity_time
+    buf = session.get('output_buffer')
+    if buf is not None:
+        buf.append(decoded_data)
+        session['output_buffer_size'] += len(decoded_data)
+        while (
+            session['output_buffer_size']
+            > session.get('output_buffer_max', 512000)
+            and len(buf) > 1
+        ):
+            removed = buf.pop(0)
+            session['output_buffer_size'] -= len(removed)
+    return sequence
 
 
 def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
@@ -738,18 +798,19 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
         with app.app_context():
             from .models import SSHSession, db
 
-            db_session = None
-            for _attempt in range(30):
-                if cancel_event is not None and cancel_event.is_set():
+            # Wait for the connect handler's commit handshake instead of
+            # polling the database; the event is stored on the session dict.
+            row_event = None
+            with sessions_lock:
+                tracked = sessions.get(session_id)
+                if tracked is not None:
+                    row_event = tracked.get('db_row_event')
+            if row_event is not None:
+                if row_event.wait(3.0) and cancel_event is not None and cancel_event.is_set():
                     return
-                db_session = SSHSession.query.filter_by(session_id=session_id).first()
-                if db_session:
-                    break
-                if cancel_event is not None:
-                    if cancel_event.wait(0.1):
-                        return
-                else:
-                    time.sleep(0.1)
+            if cancel_event is not None and cancel_event.is_set():
+                return
+            db_session = SSHSession.query.filter_by(session_id=session_id).first()
 
             if db_session:
                 cached_user_id = db_session.user_id
@@ -771,12 +832,27 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
                 try:
                     data = channel.recv(32768)
                     if data:
-                        import re as _re
+                        # Drain the burst: keep reading while chunks keep
+                        # arriving inside the batch window, then emit one
+                        # coalesced event instead of one event per chunk.
+                        deadline = time.monotonic() + SSH_OUTPUT_BATCH_WINDOW
+                        while len(data) < SSH_OUTPUT_BATCH_MAX_BYTES:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                break
+                            channel.settimeout(min(0.05, remaining))
+                            try:
+                                more = channel.recv(32768)
+                            except socket.timeout:
+                                break
+                            if not more:
+                                break
+                            data += more
+                        channel.settimeout(0.1)
                         decoded_data = data.decode('utf-8', errors='replace')
-                        # Filter Device Attributes responses (ESC[c sequences only).
-                        # Bare-pattern regexes were removed because they corrupt
-                        # legitimate output like "padding:0;color:red".
-                        decoded_data = _re.sub(r'\x1b\[[?>]?[0-9;]*c', '', decoded_data)
+                        decoded_data = _DEVICE_ATTRIBUTES_RESPONSE.sub(
+                            '', decoded_data
+                        )
                         if not decoded_data:
                             # Nothing to emit; skip
                             continue
@@ -853,12 +929,11 @@ def send_ssh_input(
 ):
     """Send user input to SSH channel."""
     try:
-        import re as _re
         # Filter Device Attributes responses (ESC[c sequences only) that
         # xterm.js may echo back as input. Bare-pattern regexes were removed
         # because they corrupt legitimate input like "100c" or "cat file".
         if isinstance(data, str):
-            data = _re.sub(r'\x1b\[[?>]?[0-9;]*c', '', data)
+            data = _DEVICE_ATTRIBUTES_RESPONSE.sub('', data)
         if not data:
             return True, None
 
@@ -871,6 +946,7 @@ def send_ssh_input(
                 return False, "Session not connected"
 
             channel = session['channel']
+            session_lock = session.get('_lock')
 
         if require_complete:
             remaining = data.encode('utf-8') if isinstance(data, str) else data
@@ -886,9 +962,11 @@ def send_ssh_input(
                 return False, "Connection cancelled"
             channel.send(data)
 
-        with sessions_lock:
-            if session_id in sessions:
-                sessions[session_id]['last_activity'] = time.time()
+        if session_lock is not None:
+            with session_lock:
+                session['last_activity'] = time.time()
+        else:
+            session['last_activity'] = time.time()
 
         return True, None
     except Exception as e:
@@ -1020,17 +1098,25 @@ def get_output_buffer(session_id):
 
 def get_output_snapshot(session_id):
     """Return buffered output and its atomic monotone sequence watermark."""
-    import re as _re
-    with sessions_lock:
-        if session_id in sessions:
-            buf = sessions[session_id].get('output_buffer')
-            if buf:
-                output = ''.join(buf)
-                # Filter Device Attributes responses (ESC[c sequences only)
-                output = _re.sub(r'\x1b\[[?>]?[0-9;]*c', '', output)
-                return output, sessions[session_id].get('output_sequence', 0)
-            return '', sessions[session_id].get('output_sequence', 0)
+    session = sessions.get(session_id)
+    if session is not None:
+        session_lock = session.get('_lock')
+        if session_lock is not None:
+            with session_lock:
+                return _output_snapshot_locked(session)
+        return _output_snapshot_locked(session)
     return '', 0
+
+
+def _output_snapshot_locked(session):
+    buf = session.get('output_buffer')
+    sequence = session.get('output_sequence', 0)
+    if buf:
+        output = ''.join(buf)
+        # Filter Device Attributes responses (ESC[c sequences only)
+        output = _DEVICE_ATTRIBUTES_RESPONSE.sub('', output)
+        return output, sequence
+    return '', sequence
 
 def cleanup_idle_sessions():
     """Clean up sessions that have been idle too long."""
@@ -1041,16 +1127,24 @@ def cleanup_idle_sessions():
         to_warn = []
 
         with sessions_lock:
-            for session_id, session in sessions.items():
-                idle_time = current_time - session['last_activity']
+            tracked = list(sessions.items())
 
+        for session_id, session in tracked:
+            session_lock = session.get('_lock')
+            if session_lock is not None:
+                with session_lock:
+                    idle_time = current_time - session['last_activity']
+                    if idle_time > config.SESSION_TIMEOUT:
+                        to_close.append(session_id)
+                    elif idle_time > (config.SESSION_TIMEOUT - 120) and not session.get('_warned'):
+                        to_warn.append((session_id, session.get('user_id')))
+                        session['_warned'] = True
+                    elif idle_time <= (config.SESSION_TIMEOUT - 120) and session.get('_warned'):
+                        session['_warned'] = False
+            else:
+                idle_time = current_time - session['last_activity']
                 if idle_time > config.SESSION_TIMEOUT:
                     to_close.append(session_id)
-                elif idle_time > (config.SESSION_TIMEOUT - 120) and not session.get('_warned'):
-                    to_warn.append((session_id, session.get('user_id')))
-                    session['_warned'] = True
-                elif idle_time <= (config.SESSION_TIMEOUT - 120) and session.get('_warned'):
-                    session['_warned'] = False
 
         for session_id, user_id in to_warn:
             if user_id:

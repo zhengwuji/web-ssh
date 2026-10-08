@@ -64,10 +64,11 @@ def test_workspace_exposes_one_context_tab_system_below_connection_tabs(
         assert marker in response.data
 
     assert b'id="contextWorkspaceTabs" role="tablist"' in response.data
-    assert response.data.count(b'data-workspace-context=') == 4
+    assert response.data.count(b'data-workspace-context=') == 5
     assert b'aria-controls="contextFilesPanel"' in response.data
     assert b'aria-controls="contextCommandsPanel"' in response.data
     assert b'aria-controls="contextDiagnosticsPanel"' in response.data
+    assert b'aria-controls="contextMonitorPanel"' in response.data
     assert b'aria-controls="contextNotesPanel"' in response.data
     assert b'id="sessionSftpToggleBtn"' not in response.data
     assert b'id="sessionCommandsToggle"' not in response.data

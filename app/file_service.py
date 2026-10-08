@@ -20,6 +20,13 @@ from .sftp_backend import SFTPBackend
 from .smb_backend import smb_backend
 
 
+# Compiled once: cursor and request-id parsing run on every paged listing.
+_DIRECTORY_CURSOR = re.compile(
+    r'v1\.([A-Za-z0-9_-]{16,64})\.([1-9][0-9]{0,7})\.([0-9a-f]{32})'
+)
+_REQUEST_ID = re.compile(r'[A-Za-z0-9:._-]{1,128}')
+
+
 class FileService:
     """Resolve a source and authorize one named operation before dispatch."""
 
@@ -230,10 +237,7 @@ class FileService:
             or not 1 <= len(cursor) <= 160
         ):
             return None
-        match = re.fullmatch(
-            r'v1\.([A-Za-z0-9_-]{16,64})\.([1-9][0-9]{0,7})\.([0-9a-f]{32})',
-            cursor,
-        )
+        match = _DIRECTORY_CURSOR.fullmatch(cursor)
         if match is None:
             return None
         return match.group(1), int(match.group(2)), match.group(3)
@@ -242,7 +246,7 @@ class FileService:
     def _valid_directory_request_id(request_id):
         return (
             isinstance(request_id, str)
-            and re.fullmatch(r'[A-Za-z0-9:._-]{1,128}', request_id)
+            and _REQUEST_ID.fullmatch(request_id)
             is not None
         )
 

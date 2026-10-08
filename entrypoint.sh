@@ -62,4 +62,115 @@ if [ -z "$_sk" ]; then
     export SECRET_KEY="$_sk"
 fi
 
+# ---------------------------------------------------------------------------
+# Optional TLS termination (WEBSSH_TLS_MODE): off | self-signed | acme | manual
+# ---------------------------------------------------------------------------
+GUNICORN_TLS_ARGS=""
+TLS_MODE="${WEBSSH_TLS_MODE:-off}"
+TLS_CERT_DIR="${WEBSSH_TLS_CERT_DIR:-$DATA_DIR/tls}"
+TLS_CERT_FILE="$TLS_CERT_DIR/fullchain.pem"
+TLS_KEY_FILE="$TLS_CERT_DIR/privkey.pem"
+TLS_DOMAIN="${WEBSSH_TLS_DOMAIN:-}"
+
+case "$TLS_MODE" in
+    off)
+        ;;
+    self-signed)
+        if [ -z "$TLS_DOMAIN" ]; then
+            echo "ERROR: WEBSSH_TLS_MODE=self-signed requires WEBSSH_TLS_DOMAIN (a domain or IP)." >&2
+            exit 1
+        fi
+        mkdir -p "$TLS_CERT_DIR"
+        chmod 700 "$TLS_CERT_DIR" || true
+        # The CLI exits 2 when it generated/rotated the certificate, which is
+        # the normal first-run outcome; only a real failure may abort startup.
+        _tls_status=0
+        python -m app.tls_certificates             --domain "$TLS_DOMAIN"             --cert-dir "$TLS_CERT_DIR"             --renew-within-days "${WEBSSH_TLS_RENEW_WITHIN_DAYS:-30}" || _tls_status=$?
+        case "$_tls_status" in
+            0|2) ;;
+            *)
+                echo "ERROR: self-signed certificate setup failed (exit $_tls_status)." >&2
+                exit 1
+                ;;
+        esac
+        # Background watchdog keeps rotating the private certificate; it
+        # survives the exec below as a detached child of the new PID 1.
+        (
+            while :; do
+                sleep "${WEBSSH_TLS_RENEWAL_CHECK_HOURS:-12}h" 2>/dev/null || sleep 43200
+                python -m app.tls_certificates                     --domain "$TLS_DOMAIN"                     --cert-dir "$TLS_CERT_DIR"                     --renew-within-days "${WEBSSH_TLS_RENEW_WITHIN_DAYS:-30}"                     >/dev/null 2>&1 || true
+            done
+        ) &
+        GUNICORN_TLS_ARGS="--certfile=$TLS_CERT_FILE --keyfile=$TLS_KEY_FILE"
+        echo "TLS: serving HTTPS with an auto-rotated self-signed certificate for $TLS_DOMAIN"
+        ;;
+    acme)
+        if [ -z "$TLS_DOMAIN" ]; then
+            echo "ERROR: WEBSSH_TLS_MODE=acme requires WEBSSH_TLS_DOMAIN." >&2
+            exit 1
+        fi
+        if [ -z "${WEBSSH_TLS_EMAIL:-}" ]; then
+            echo "ERROR: WEBSSH_TLS_MODE=acme requires WEBSSH_TLS_EMAIL." >&2
+            exit 1
+        fi
+        ACME_HOME="$TLS_CERT_DIR/acme-home"
+        mkdir -p "$TLS_CERT_DIR"
+        chmod 700 "$TLS_CERT_DIR" || true
+        if [ ! -x "$ACME_HOME/acme.sh" ]; then
+            echo "TLS: installing acme.sh (requires outbound network access)"
+            curl -sSLf https://get.acme.sh |
+                ACME_HOME="$ACME_HOME" sh -s -- install --home "$ACME_HOME" --no-cron || {
+                echo "ERROR: acme.sh installation failed; check outbound connectivity." >&2
+                exit 1
+            }
+        fi
+        _extra_issue_args=""
+        case "$TLS_DOMAIN" in
+            *.*) _extra_issue_args="" ;;
+            *)
+                # A bare IP: Let's Encrypt only signs IP identifiers with the
+                # short-lived profile; acme.sh must support it (>= 3.1).
+                _extra_issue_args="--certificate-profile shortlived"
+                ;;
+        esac
+        if [ ! -s "$TLS_CERT_FILE" ]; then
+            echo "TLS: issuing certificate for $TLS_DOMAIN (standalone HTTP-01 on port ${WEBSSH_TLS_ACME_PORT:-80})"
+            "$ACME_HOME/acme.sh" --issue                 --domain "$TLS_DOMAIN"                 --standalone                 --server "${WEBSSH_TLS_CA:-letsencrypt}"                 --accountemail "$WEBSSH_TLS_EMAIL"                 --keylength ec-256                 $_extra_issue_args || {
+                echo "ERROR: certificate issuance failed; verify DNS/port 80 reachability." >&2
+                exit 1
+            }
+            "$ACME_HOME/acme.sh" --install-cert                 --domain "$TLS_DOMAIN"                 --ecc                 --fullchain-file "$TLS_CERT_FILE"                 --key-file "$TLS_KEY_FILE"                 --reloadcmd "kill -HUP 1 2>/dev/null || true" || exit 1
+        fi
+        # Renewal watchdog: acme.sh's own cron cannot run inside a container,
+        # so re-run its renewal pass on a fixed cadence. Successful renewals
+        # re-install the files and HUP the gunicorn master (PID 1 after exec).
+        (
+            while :; do
+                sleep "${WEBSSH_TLS_RENEWAL_CHECK_HOURS:-12}h" 2>/dev/null || sleep 43200
+                "$ACME_HOME/acme.sh" --cron --home "$ACME_HOME" >/dev/null 2>&1 || true
+            done
+        ) &
+        GUNICORN_TLS_ARGS="--certfile=$TLS_CERT_FILE --keyfile=$TLS_KEY_FILE"
+        echo "TLS: serving HTTPS with an ACME-managed certificate for $TLS_DOMAIN"
+        ;;
+    manual)
+        if [ ! -s "$TLS_CERT_FILE" ] || [ ! -s "$TLS_KEY_FILE" ]; then
+            echo "ERROR: WEBSSH_TLS_MODE=manual expects PEM files at:" >&2
+            echo "  $TLS_CERT_FILE" >&2
+            echo "  $TLS_KEY_FILE" >&2
+            exit 1
+        fi
+        GUNICORN_TLS_ARGS="--certfile=$TLS_CERT_FILE --keyfile=$TLS_KEY_FILE"
+        echo "TLS: serving HTTPS with operator-provided certificates"
+        ;;
+    *)
+        echo "ERROR: WEBSSH_TLS_MODE must be one of off, self-signed, acme, manual." >&2
+        exit 1
+        ;;
+esac
+if [ -n "$GUNICORN_TLS_ARGS" ]; then
+    export GUNICORN_TLS_ARGS
+    chmod 600 "$TLS_KEY_FILE" || true
+fi
+
 exec "$@"

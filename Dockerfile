@@ -21,7 +21,7 @@ FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360
 
 ARG VCS_REF=unknown
 
-LABEL org.opencontainers.image.source=https://github.com/bifrost0x/webssh
+LABEL org.opencontainers.image.source=https://github.com/zhengwuji/web-ssh
 LABEL org.opencontainers.image.description="Web SSH Terminal - A modern web-based SSH client with SFTP file manager"
 LABEL org.opencontainers.image.licenses=MIT
 LABEL org.opencontainers.image.revision=$VCS_REF
@@ -46,6 +46,8 @@ RUN apt-get update \
     && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends \
         ca-certificates \
+        curl \
+        socat \
         libldap2 \
         libsasl2-2 \
     && rm -rf /var/lib/apt/lists/* \
@@ -79,7 +81,7 @@ USER appuser
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '5000') + '/ready', timeout=2).read(1)"
+  CMD python healthcheck.py
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["sh", "-c", "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" --bind 0.0.0.0:5000 start:app"]
+CMD ["sh", "-c", "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" ${GUNICORN_TLS_ARGS:-} --bind 0.0.0.0:5000 start:app"]

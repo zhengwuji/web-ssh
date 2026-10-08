@@ -171,5 +171,5 @@ source checkout. See [Data Storage and Persistence](Data-Storage-and-Persistence
 ### How do I report a vulnerability?
 
 Do not open a public issue. Use the repository's private
-[security-advisory form](https://github.com/bifrost0x/webssh/security/advisories/new)
+[security-advisory form](https://github.com/zhengwuji/web-ssh/security/advisories/new)
 or the contact listed in `SECURITY.md`.

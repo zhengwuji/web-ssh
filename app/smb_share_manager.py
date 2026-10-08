@@ -13,6 +13,7 @@ from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
 
 
 _ID_PATTERN = re.compile(r'[A-Za-z0-9._-]{1,64}')
+_NON_ALPHANUMERIC = re.compile(r'[^a-z0-9]')
 _KNOWN_FIELDS = {
     'id',
     'name',
@@ -35,7 +36,7 @@ _MAX_SAVED_SHARE_DOCUMENT_ITEMS = 1000
 
 
 def _is_secret_field(key):
-    normalized = re.sub(r'[^a-z0-9]', '', str(key).casefold())
+    normalized = _NON_ALPHANUMERIC.sub('', str(key).casefold())
     return any(marker in normalized for marker in _SECRET_MARKERS)
 
 

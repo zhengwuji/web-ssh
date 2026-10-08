@@ -27,6 +27,24 @@ test('host-key changes get a fail-closed explanation and same-origin trust actio
 });
 
 
+test('unconfirmed host keys explain the cancelled connection without a trust action', () => {
+    const values = {
+        'sshErrors.hostKeyUnconfirmed': 'Der SSH-Host-Schlüssel wurde nicht bestätigt, daher wurde die Verbindung abgebrochen.',
+    };
+    const result = describeSSHError(
+        { code: 'host_key_unconfirmed', error: 'SSH host key is not trusted yet' },
+        key => values[key] || key,
+        '',
+    );
+
+    assert.deepEqual(result, {
+        message: values['sshErrors.hostKeyUnconfirmed'],
+        type: 'error',
+        duration: undefined,
+    });
+});
+
+
 test('generic SSH errors retain their safe server message without an action', () => {
     const result = describeSSHError(
         { error: 'Authentication failed - invalid credentials' },

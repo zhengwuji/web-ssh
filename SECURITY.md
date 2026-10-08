@@ -15,8 +15,7 @@ I take security seriously. If you discover a security vulnerability in WebSSH, p
 **Please do NOT open a public GitHub issue for security vulnerabilities.**
 
 Instead, report vulnerabilities via:
-- **Email:** dwight@scranton.de
-- **GitHub Security Advisories:** [Report a vulnerability](https://github.com/bifrost0x/webssh/security/advisories/new)
+- **GitHub Security Advisories:** [Report a vulnerability](https://github.com/zhengwuji/web-ssh/security/advisories/new)
 
 ### What to Include
 

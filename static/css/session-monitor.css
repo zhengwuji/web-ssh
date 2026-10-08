@@ -1,0 +1,302 @@
+/* Session monitor sidebar — compact live host metrics for the active SSH
+ * session. Uses the app's existing CSS custom properties for theming. */
+
+.session-monitor-panel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.session-monitor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+}
+
+.session-monitor-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, .25));
+}
+
+.session-monitor-hostname {
+    font-size: 1.15rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.session-monitor-osline {
+    font-size: .82rem;
+    color: var(--text-secondary, rgba(200, 200, 200, .75));
+    overflow-wrap: anywhere;
+}
+
+.session-monitor-statusline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.session-monitor-status {
+    font-size: .72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, .3));
+}
+
+.session-monitor-status.is-ready {
+    color: var(--success-color, #3fb950);
+    border-color: currentColor;
+}
+
+.session-monitor-status.is-stale,
+.session-monitor-status.is-loading {
+    color: var(--warning-color, #d29922);
+    border-color: currentColor;
+}
+
+.session-monitor-status.is-unavailable,
+.session-monitor-status.is-reconnecting {
+    color: var(--warning-color, #d29922);
+    border-color: currentColor;
+}
+
+.session-monitor-status.is-disconnected {
+    color: var(--text-secondary, rgba(200, 200, 200, .7));
+}
+
+.session-monitor-updated {
+    font-size: .72rem;
+    color: var(--text-secondary, rgba(200, 200, 200, .6));
+}
+
+.session-monitor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.session-monitor-empty {
+    font-size: .85rem;
+    color: var(--text-secondary, rgba(200, 200, 200, .7));
+    padding: 12px 4px;
+}
+
+.monitor-card {
+    background: var(--bg-secondary, rgba(128, 128, 128, .08));
+    border: 1px solid var(--border-color, rgba(128, 128, 128, .2));
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.monitor-card-title {
+    margin: 0 0 10px;
+    font-size: .8rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    color: var(--text-primary, inherit);
+}
+
+/* CPU gauge */
+.monitor-cpu-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.monitor-cpu-gauge {
+    position: relative;
+    width: 96px;
+    flex: 0 0 auto;
+}
+
+.monitor-gauge-track {
+    fill: none;
+    stroke: var(--border-color, rgba(128, 128, 128, .3));
+    stroke-width: 9;
+}
+
+.monitor-gauge-value {
+    fill: none;
+    stroke: var(--info-color, #58a6ff);
+    stroke-width: 9;
+    stroke-linecap: round;
+    transform: rotate(-90deg);
+    transform-origin: 42px 42px;
+    transition: stroke-dasharray .6s ease;
+}
+
+.monitor-gauge-value.is-warning {
+    stroke: var(--warning-color, #d29922);
+}
+
+.monitor-gauge-value.is-critical {
+    stroke: var(--danger-color, #f85149);
+}
+
+.monitor-gauge-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.monitor-gauge-value-text,
+.monitor-gauge-label .monitor-gauge-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary, inherit);
+}
+
+.monitor-gauge-range {
+    font-size: .62rem;
+    color: var(--text-secondary, rgba(200, 200, 200, .6));
+}
+
+.monitor-cpu-facts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: .8rem;
+    min-width: 0;
+}
+
+.monitor-cpu-fact {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-secondary, rgba(200, 200, 200, .8));
+}
+
+.monitor-cpu-fact strong {
+    color: var(--text-primary, inherit);
+}
+
+.monitor-cpu-fact-muted {
+    font-size: .72rem;
+    opacity: .75;
+}
+
+/* Meters */
+.monitor-meter {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.monitor-meter + .monitor-meter {
+    margin-top: 10px;
+}
+
+.monitor-meter-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: .8rem;
+    gap: 8px;
+}
+
+.monitor-meter-head > span:first-child {
+    overflow-wrap: anywhere;
+}
+
+.monitor-meter-value {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.monitor-meter-value.is-warning {
+    color: var(--warning-color, #d29922);
+}
+
+.monitor-meter-value.is-critical {
+    color: var(--danger-color, #f85149);
+}
+
+.monitor-meter-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--border-color, rgba(128, 128, 128, .25));
+    overflow: hidden;
+}
+
+.monitor-meter-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--info-color, #58a6ff);
+    transition: width .5s ease;
+}
+
+.monitor-meter-fill.is-warning {
+    background: var(--warning-color, #d29922);
+}
+
+.monitor-meter-fill.is-critical {
+    background: var(--danger-color, #f85149);
+}
+
+.monitor-meter-caption {
+    font-size: .74rem;
+    color: var(--text-secondary, rgba(200, 200, 200, .65));
+}
+
+/* Network */
+.monitor-network-row {
+    display: flex;
+    gap: 16px;
+}
+
+.monitor-network-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+.monitor-network-item .material-icons {
+    font-size: 1rem;
+}
+
+.monitor-network-item.is-up {
+    color: var(--success-color, #3fb950);
+}
+
+.monitor-network-item.is-down {
+    color: var(--info-color, #58a6ff);
+}
+
+/* Process table */
+.monitor-process-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .78rem;
+}
+
+.monitor-process-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary, rgba(200, 200, 200, .7));
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, .25));
+    white-space: nowrap;
+}
+
+.monitor-process-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, .12));
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.monitor-process-table th:nth-child(n + 3),
+.monitor-process-table td:nth-child(n + 3) {
+    text-align: right;
+}

@@ -450,6 +450,42 @@ test('unsaved notes warn before leaving even with no connected SSH session', () 
 });
 
 
+test('quick host key prompts never trigger the terminal auto-denial path', () => {
+    const harness = loadAppSocketHarness();
+    const confirm = harness.handlers.get('ssh_host_key_confirm');
+
+    confirm({
+        flow: 'quick',
+        prompt_id: 'quick-prompt-1',
+        host: 'target.example',
+        key_type: 'ssh-ed25519',
+        fingerprint: 'SHA256:AbCdEf0123456789',
+        context: 'target',
+        client_request_id: null,
+    });
+    assert.deepEqual(harness.emitted, []);
+    assert.equal(
+        harness.browserGlobal.ModalManager.activeModal,
+        null,
+        'the quick prompt must not open the terminal host key modal',
+    );
+
+    confirm({
+        prompt_id: 'terminal-prompt-1',
+        host: 'target.example',
+        key_type: 'ssh-ed25519',
+        fingerprint: 'SHA256:AbCdEf0123456789',
+        context: 'target',
+        client_request_id: null,
+    });
+    assert.deepEqual(
+        harness.emitted,
+        ['ssh_host_key_decision'],
+        'an uncorrelated terminal prompt is still denied automatically',
+    );
+});
+
+
 test('initial transport waits for UI setup and compatible reconnect reloads command data', () => {
     const harness = loadAppSocketHarness();
     assert.equal(harness.state.socketOptions.autoConnect, false);

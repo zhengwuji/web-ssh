@@ -28,6 +28,16 @@ from .startup_commands import normalize_startup_commands
 
 
 _MAX_PROFILE_GROUP_LENGTH = 64
+
+# Compiled once: these run on every profile validation.
+# ``fullmatch`` (instead of ``match`` with ``^...$``) is required because ``$``
+# also matches immediately before a trailing newline, so ``"alice\n"`` used to
+# pass validation.
+_USERNAME_PATTERN = re.compile(r'[a-zA-Z0-9_\-\.]{1,32}')
+_HOSTNAME_PATTERN = re.compile(
+    r'[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
+    r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*'
+)
 _UNSET = object()
 
 
@@ -90,11 +100,7 @@ def _is_valid_host(host_str):
         return True
     except ValueError:
         pass
-    hostname_pattern = re.compile(
-        r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
-        r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-    )
-    return bool(hostname_pattern.match(host_str))
+    return bool(_HOSTNAME_PATTERN.fullmatch(host_str))
 
 def get_user_profiles_file(user_id):
     """Get the profiles file path for a specific user."""
@@ -367,7 +373,7 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
             return None, str(error)
     else:
         username = str(username).strip()
-        if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+        if not _USERNAME_PATTERN.fullmatch(username):
             return None, 'Invalid username format'
     if auth_type not in {'password', 'key', 'tailscale'}:
         return None, 'Invalid auth_type'

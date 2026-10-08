@@ -5,6 +5,7 @@ from flask_login import login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
+import ipaddress
 import os
 import sys
 import time
@@ -624,14 +625,36 @@ def create_app(
 
     trusted_proxies = config.TRUSTED_PROXIES
     if trusted_proxies > 0:
-        app.wsgi_app = ProxyFix(
+        from .proxy_guard import TrustedProxyGuard
+
+        proxy_networks = []
+        for cidr in config.TRUSTED_PROXY_CIDRS:
+            try:
+                proxy_networks.append(ipaddress.ip_network(cidr, strict=False))
+            except ValueError:
+                log_error(
+                    'Ignoring malformed TRUSTED_PROXY_CIDRS entry',
+                    cidr=cidr,
+                )
+        wrapped = ProxyFix(
             app.wsgi_app,
             x_for=trusted_proxies,
             x_proto=trusted_proxies,
             x_host=trusted_proxies,
             x_prefix=trusted_proxies
         )
-        log_info("ProxyFix enabled")
+        if proxy_networks:
+            app.wsgi_app = TrustedProxyGuard(wrapped, proxy_networks)
+            log_info(
+                'ProxyFix enabled behind trusted proxy CIDR allowlist',
+                networks=[str(network) for network in proxy_networks],
+            )
+        else:
+            app.wsgi_app = wrapped
+            log_warning(
+                'ProxyFix enabled without TRUSTED_PROXY_CIDRS: any peer can '
+                'spoof X-Forwarded-* headers and rotate rate-limit buckets'
+            )
 
     if not config.DEBUG:
         if not os.environ.get('SECRET_KEY'):
@@ -647,6 +670,8 @@ def create_app(
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{config.DATA_DIR / "app.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
+    from .models import install_sqlite_pragmas
+    install_sqlite_pragmas(app)
     from .backup_coordination import install_sqlalchemy_coordination
     install_sqlalchemy_coordination()
     init_auth(app)
@@ -757,9 +782,9 @@ def create_app(
         """Add comprehensive security headers to all responses."""
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
+            "img-src 'self' data:; "
             "font-src 'self' data:; "
             "media-src 'self' data:; "
             "connect-src 'self' ws: wss:; "
@@ -1414,11 +1439,20 @@ def create_app(
             try:
                 user_lifecycle.delete_user_account(target, socketio)
             except Exception as exc:
+                # Keep the exception detail in the server log only; the audit
+                # record carries the type so internal paths cannot leak.
                 log_error(
-                    "Admin user deletion failed",
+                    "Admin user deletion failure detail",
                     admin=current_user.username,
                     user=username,
                     error=str(exc),
+                    exc_info=True,
+                )
+                log_warning(
+                    "Admin user deletion failed",
+                    admin=current_user.username,
+                    user=username,
+                    error_type=type(exc).__name__,
                 )
                 return jsonify({
                     'error': 'User deletion failed; the account remains locked'

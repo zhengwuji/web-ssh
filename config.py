@@ -27,6 +27,27 @@ if DEPLOYMENT_PROFILE not in {'homelab', 'production'}:
     )
 
 DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR / 'data'))
+
+# TLS termination by the app itself. 'off' keeps the classic plain-HTTP
+# listener (a reverse proxy or nothing); 'acme' issues and renews a
+# publicly-trusted certificate for WEBSSH_TLS_DOMAIN through acme.sh
+# (domains; bare IPs attempt the Let's Encrypt short-lived profile);
+# 'self-signed' generates and automatically rotates a private certificate
+# for a domain or IP; 'manual' serves operator-mounted PEM files.
+WEBSSH_TLS_MODE = os.environ.get('WEBSSH_TLS_MODE', 'off').strip().lower()
+if WEBSSH_TLS_MODE not in {'off', 'acme', 'self-signed', 'manual'}:
+    raise RuntimeError(
+        'WEBSSH_TLS_MODE must be one of: off, acme, self-signed, manual'
+    )
+WEBSSH_TLS_DOMAIN = os.environ.get('WEBSSH_TLS_DOMAIN', '').strip()
+WEBSSH_TLS_EMAIL = os.environ.get('WEBSSH_TLS_EMAIL', '').strip()
+WEBSSH_TLS_CA = os.environ.get('WEBSSH_TLS_CA', 'letsencrypt').strip().lower()
+WEBSSH_TLS_CERT_DIR = Path(os.environ.get(
+    'WEBSSH_TLS_CERT_DIR', str(DATA_DIR / 'tls'),
+))
+WEBSSH_TLS_CERT_FILE = WEBSSH_TLS_CERT_DIR / 'fullchain.pem'
+WEBSSH_TLS_KEY_FILE = WEBSSH_TLS_CERT_DIR / 'privkey.pem'
+
 USERS_DIR = DATA_DIR / 'users'
 KEYS_DIR = DATA_DIR / 'keys'
 PROFILES_FILE = DATA_DIR / 'profiles.json'
@@ -39,18 +60,32 @@ TRANSFER_TEMP_DIR = Path(os.environ.get(
 
 SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', '1800'))
 
+# Passkeys are enabled by default outside the production profile so an admin
+# can turn them on from the admin panel without editing env files. Set
+# WEBAUTHN_ENABLED explicitly to override the profile default.
+WEBAUTHN_ENABLED_EXPLICIT = 'WEBAUTHN_ENABLED' in os.environ
 WEBAUTHN_ENABLED = (
-    os.environ.get('WEBAUTHN_ENABLED', 'false').lower() == 'true'
+    os.environ.get('WEBAUTHN_ENABLED', 'true').lower() == 'true'
+    if WEBAUTHN_ENABLED_EXPLICIT
+    else DEPLOYMENT_PROFILE != 'production'
 )
 WEBAUTHN_RP_ID = os.environ.get('WEBAUTHN_RP_ID', 'localhost').strip()
+WEBAUTHN_RP_ID_EXPLICIT = 'WEBAUTHN_RP_ID' in os.environ
 WEBAUTHN_RP_NAME = os.environ.get('WEBAUTHN_RP_NAME', 'WebSSH').strip()
 WEBAUTHN_ORIGIN = os.environ.get(
     'WEBAUTHN_ORIGIN',
     'https://localhost',
 ).strip()
+WEBAUTHN_ORIGIN_EXPLICIT = 'WEBAUTHN_ORIGIN' in os.environ
 
 HOST_KEY_MANAGEMENT_ENABLED = (
     os.environ.get('HOST_KEY_MANAGEMENT_ENABLED', 'true').lower() == 'true'
+)
+# First-seen SSH host keys must be confirmed by the user in the browser
+# (fingerprint prompt) before they are trusted. Set false to restore silent
+# trust-on-first-use for unattended deployments.
+HOST_KEY_CONFIRM_ENABLED = (
+    os.environ.get('HOST_KEY_CONFIRM_ENABLED', 'true').lower() == 'true'
 )
 RECOVERY_CODES_ENABLED = (
     os.environ.get('RECOVERY_CODES_ENABLED', 'true').lower() == 'true'
@@ -158,6 +193,15 @@ def _non_negative_int_env(name, default):
             f'CONFIGURATION ERROR: {name} must be a non-negative integer'
         )
     return value
+
+# Self-signed certificates rotate automatically once they are this close to
+# expiry; a background watchdog re-checks on this cadence.
+WEBSSH_TLS_RENEW_WITHIN_DAYS = _non_negative_int_env(
+    'WEBSSH_TLS_RENEW_WITHIN_DAYS', 30,
+)
+WEBSSH_TLS_RENEWAL_CHECK_HOURS = _non_negative_int_env(
+    'WEBSSH_TLS_RENEWAL_CHECK_HOURS', 12,
+)
 
 
 def _csv_env(name):
@@ -637,6 +681,16 @@ REMEMBER_COOKIE_DURATION = timedelta(days=7)
 
 _trusted_proxies_explicit = 'TRUSTED_PROXIES' in os.environ
 TRUSTED_PROXIES = _non_negative_int_env('TRUSTED_PROXIES', 0)
+# When TRUSTED_PROXIES > 0, X-Forwarded-* headers are honored only when the
+# direct socket peer address falls inside one of these comma-separated CIDRs
+# (for example '10.0.0.0/8,fd00::/8' or an exact '/32' proxy address). Empty
+# keeps the legacy behavior: the configured hop count is trusted regardless of
+# who connects, which allows header spoofing on directly reachable instances.
+TRUSTED_PROXY_CIDRS = tuple(
+    entry.strip()
+    for entry in os.environ.get('TRUSTED_PROXY_CIDRS', '').split(',')
+    if entry.strip()
+)
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 72  # bcrypt silently truncates beyond 72 bytes
@@ -718,7 +772,16 @@ if _cors_origins == '*':
 elif _cors_origins and _cors_origins.strip().strip('<>') not in ('YOUR-DOMAIN', 'YOUR-ORIGIN'):
     CORS_ORIGINS = [origin.strip() for origin in _cors_origins.split(',')]
 else:
-    CORS_ORIGINS = ['http://localhost:5000', 'http://127.0.0.1:5000']
+    # Follow the port the process actually serves on. Engine.IO validates the
+    # browser Origin on every polling POST and on the WebSocket upgrade, so a
+    # hardcoded :5000 default would silently reject a deployment that only
+    # changed PORT (the page then falls back to a permanently reconnecting
+    # polling transport).
+    _default_port = os.environ.get('PORT', '5000').strip() or '5000'
+    CORS_ORIGINS = [
+        f'http://localhost:{_default_port}',
+        f'http://127.0.0.1:{_default_port}',
+    ]
     if not DEBUG:
         print("ℹ️  CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
 
@@ -779,11 +842,13 @@ _env_app_root = os.environ.get('APPLICATION_ROOT', '').rstrip('/')
 if _env_app_root:
     APPLICATION_ROOT = _env_app_root
 
-# SSRF protection: block SSH connections to loopback/link-local addresses.
-# Set to 'true' in multi-tenant deployments to prevent users from probing
-# internal services via SSH. Defaults to 'false' for homelab use where
-# connecting to internal IPs is the primary use case.
-BLOCK_INTERNAL_SSH = os.environ.get('BLOCK_INTERNAL_SSH', 'false').lower() == 'true'
+# SSRF protection: block SSH connections to loopback/link-local/private and
+# otherwise internal addresses. Defaults to 'true': an authenticated user must
+# not be able to use the gateway to reach hosts they could not reach directly.
+# Homelab deployments whose primary use case is connecting to internal IPs can
+# opt out with BLOCK_INTERNAL_SSH=false (the shipped docker-compose.yml does
+# this explicitly for its trusted-homelab profile).
+BLOCK_INTERNAL_SSH = os.environ.get('BLOCK_INTERNAL_SSH', 'true').lower() == 'true'
 # Exact remote-DNS hostnames that a ProxyJump bastion may resolve when local
 # validation cannot produce an allowed address. Wildcards and IPs are rejected
 # by app.network_policy. Keep empty unless the bastion-only name is trusted.
@@ -923,6 +988,17 @@ def validate_security_config():
         raise RuntimeError(
             'SECURITY ERROR: SMB timeout values exceed their bounded limits'
         )
+
+    try:
+        [
+            ipaddress.ip_network(cidr, strict=False)
+            for cidr in TRUSTED_PROXY_CIDRS
+        ]
+    except ValueError as exc:
+        raise RuntimeError(
+            'SECURITY ERROR: TRUSTED_PROXY_CIDRS must contain valid CIDR '
+            'ranges such as 10.0.0.0/8 or fd00::/8'
+        ) from exc
 
     if LDAP_ENABLED:
         required_ldap_settings = {
@@ -1194,6 +1270,12 @@ def validate_security_config():
                 'TRUSTED_PROXIES must be set explicitly, including 0 when '
                 'no proxy headers are trusted'
             )
+        if TRUSTED_PROXIES > 0 and not TRUSTED_PROXY_CIDRS:
+            violations.append(
+                'TRUSTED_PROXY_CIDRS must name the reverse proxy addresses '
+                'when TRUSTED_PROXIES is greater than 0, so untrusted peers '
+                'cannot spoof X-Forwarded-* headers'
+            )
         if violations:
             raise RuntimeError(
                 'SECURITY ERROR: unsafe production profile: '
@@ -1248,4 +1330,21 @@ def validate_security_config():
     return warnings
 
 
-SECURITY_CONFIG_WARNINGS = validate_security_config()
+# Security validation is deferred to first access (PEP 562) so merely
+# importing config never triggers production-profile RuntimeErrors; the app
+# factory reads SECURITY_CONFIG_WARNINGS, which fails closed there instead.
+_security_config_cache = None
+
+
+def security_config_warnings():
+    """Validate once per process and cache the compatibility warnings."""
+    global _security_config_cache
+    if _security_config_cache is None:
+        _security_config_cache = validate_security_config()
+    return _security_config_cache
+
+
+def __getattr__(name):
+    if name == 'SECURITY_CONFIG_WARNINGS':
+        return security_config_warnings()
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

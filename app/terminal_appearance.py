@@ -11,6 +11,9 @@ _KEYS = _COLOR_KEYS | {
     'font_family', 'font_size', 'line_height', 'letter_spacing',
     'font_weight', 'background_opacity', 'cursor_style', 'cursor_blink',
 }
+# Compiled once: validation runs on every settings read and write.
+_COLOR_PATTERN = re.compile(r'#[0-9a-fA-F]{6}')
+_FONT_FAMILY_PATTERN = re.compile(r'[A-Za-z0-9 _-]{1,64}')
 
 
 def valid_terminal_appearance(value):
@@ -21,13 +24,13 @@ def valid_terminal_appearance(value):
         if key in _COLOR_KEYS:
             if item is not None and (
                 not isinstance(item, str)
-                or re.fullmatch(r'#[0-9a-fA-F]{6}', item) is None
+                or _COLOR_PATTERN.fullmatch(item) is None
             ):
                 return False
         elif key == 'font_family':
             if (
                 not isinstance(item, str)
-                or re.fullmatch(r'[A-Za-z0-9 _-]{1,64}', item) is None
+                or _FONT_FAMILY_PATTERN.fullmatch(item) is None
             ):
                 return False
         elif key == 'font_size':

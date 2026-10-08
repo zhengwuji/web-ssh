@@ -17,7 +17,7 @@ import threading
 import paramiko
 from datetime import datetime
 import config
-from .host_key_store import HostKeyStore
+from .host_key_store import HostKeyStore, UnconfirmedHostKeyError
 from .network_policy import open_validated_socket, resolve_allowed_target
 from .ssh_key_loader import load_private_key as _load_private_key
 from .ssh_errors import SSHConnectionError
@@ -68,7 +68,7 @@ class TemporaryConnectionPool:
             )
             return self.cleanup_handle
 
-    def create_connection(self, host, port, username, password=None, key_path=None, key_content=None, user_id=None, gateway_attempt=None):
+    def create_connection(self, host, port, username, password=None, key_path=None, key_content=None, user_id=None, gateway_attempt=None, host_key_decision=None):
         """
         Create a temporary SSH+SFTP connection.
 
@@ -80,6 +80,10 @@ class TemporaryConnectionPool:
             key_path (str, optional): Path to SSH private key file - DEPRECATED
             key_content (str, optional): Decrypted SSH private key content (preferred)
             user_id (str): Application user ID (for tracking)
+            gateway_attempt (GatewayAttempt, optional): Cancellable gateway attempt
+            host_key_decision (callable, optional): Confirmation callback for a
+                first-seen host key. Without it the pool keeps the historical
+                silent trust-on-first-use behaviour.
 
         Returns:
             tuple: (connection_id: str or None, error: str or None)
@@ -119,7 +123,9 @@ class TemporaryConnectionPool:
             client = paramiko.SSHClient()
             host_key_store.load_into(client)
             client.set_missing_host_key_policy(
-                host_key_store.missing_key_policy()
+                host_key_store.missing_key_policy(
+                    decision_callback=host_key_decision, context="target"
+                )
             )
 
             connect_kwargs = {
@@ -213,6 +219,18 @@ class TemporaryConnectionPool:
             return None, SSHConnectionError(
                 "SSH host key changed",
                 code="host_key_changed",
+                context="target",
+            )
+        except UnconfirmedHostKeyError as e:
+            log_warning(
+                "Pool SSH host key not confirmed",
+                host=f"{host}:{port}",
+                key_type=e.key_type,
+                fingerprint=e.fingerprint,
+            )
+            return None, SSHConnectionError(
+                "SSH host key is not trusted yet",
+                code="host_key_unconfirmed",
                 context="target",
             )
         except paramiko.AuthenticationException:

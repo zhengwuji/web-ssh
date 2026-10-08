@@ -9,7 +9,7 @@ import pytest
 from scripts.release_image import inspect_candidate, promote, validate_index
 
 
-IMAGE = 'ghcr.io/bifrost0x/webssh'
+IMAGE = 'ghcr.io/zhengwuji/web-ssh'
 REVISION = '1' * 40
 DIGEST = 'sha256:' + 'a' * 64
 AMD64 = 'sha256:' + 'b' * 64

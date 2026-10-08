@@ -1,6 +1,15 @@
+import json
 import re
 from pathlib import Path
 
+
+I18N_SOURCE_PATH = Path('static/js/i18n.js')
+I18N_BUNDLE_DIRECTORY = Path('static/js/i18n')
+ENGLISH_BLOCK_PATTERN = re.compile(r'^    en: \{$', re.MULTILINE)
+ENGLISH_ENTRY_PATTERN = re.compile(
+    r"""^        '([^']+)': (?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'),?$""",
+    re.MULTILINE,
+)
 
 TERMINOLOGY = {
     'en': ('Quick Connect', 'Hosts'),
@@ -36,15 +45,44 @@ SAVED_CONNECTION_COPY_KEYS = {
 }
 
 
-def test_all_locales_have_matching_translation_keys():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
-    locale_starts = list(re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE))
-    keys_by_locale = {}
+def _inline_english_entries():
+    """Read the English table that ships inline in static/js/i18n.js.
 
-    for index, match in enumerate(locale_starts):
-        end = locale_starts[index + 1].start() if index + 1 < len(locale_starts) else source.index('\n};', match.end())
-        block = source[match.end():end]
-        keys_by_locale[match.group(1)] = set(re.findall(r"^        '([^']+)':", block, re.MULTILINE))
+    Only English stays inline so the workspace first load does not pay for
+    every locale; the other bundles are fetched on demand.
+    """
+    source = I18N_SOURCE_PATH.read_text(encoding='utf-8')
+    start = ENGLISH_BLOCK_PATTERN.search(source)
+    assert start is not None, 'static/js/i18n.js must keep an inline en table'
+    end = source.index('\n};', start.end())
+    entries = {}
+    for match in ENGLISH_ENTRY_PATTERN.finditer(source[start.end():end]):
+        raw = match.group(2) if match.group(2) is not None else match.group(3)
+        entries[match.group(1)] = raw.replace("\\'", "'").replace('\\"', '"')
+    return entries
+
+
+def _bundle_locales():
+    """Read the lazily fetched static/js/i18n/<lang>.json bundles."""
+    locales = {}
+    for bundle_path in sorted(I18N_BUNDLE_DIRECTORY.glob('*.json')):
+        locales[bundle_path.stem] = json.loads(
+            bundle_path.read_text(encoding='utf-8')
+        )
+    return locales
+
+
+def _translations_by_locale():
+    locales = {'en': _inline_english_entries()}
+    locales.update(_bundle_locales())
+    return locales
+
+
+def test_all_locales_have_matching_translation_keys():
+    translations = _translations_by_locale()
+    keys_by_locale = {
+        locale: set(entries) for locale, entries in translations.items()
+    }
 
     assert set(keys_by_locale) == {'en', 'vi', 'de', 'fr', 'es', 'zh'}
     assert all(
@@ -108,10 +146,7 @@ def test_all_locales_have_matching_translation_keys():
 
 
 def test_saved_connection_and_quick_connect_terms_are_consistent():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
-    locale_starts = list(
-        re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE)
-    )
+    translations = _translations_by_locale()
     quick_keys = {
         'connection.newConnection',
         'connection.newSSHConnection',
@@ -123,18 +158,8 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
         'fm.qc.savedProfiles',
     }
 
-    for index, match in enumerate(locale_starts):
-        end = (
-            locale_starts[index + 1].start()
-            if index + 1 < len(locale_starts)
-            else source.index('\n};', match.end())
-        )
-        values = dict(re.findall(
-            r"^        '([^']+)': '([^']*)',$",
-            source[match.end():end],
-            re.MULTILINE,
-        ))
-        quick_connect, saved_connections = TERMINOLOGY[match.group(1)]
+    for locale, values in translations.items():
+        quick_connect, saved_connections = TERMINOLOGY[locale]
         assert {values[key] for key in quick_keys} == {quick_connect}
         assert {values[key] for key in saved_keys} == {saved_connections}
         assert values['panes.newConnection'] == f'+ {quick_connect}'
@@ -144,10 +169,10 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
         assert quick_connect in values['panes.assignInfo']
         for key in SAVED_CONNECTION_COPY_KEYS:
             assert not re.search(
-                LEGACY_CONNECTION_TERMS[match.group(1)],
+                LEGACY_CONNECTION_TERMS[locale],
                 values[key],
                 re.IGNORECASE,
-            ), f'{match.group(1)}:{key} still uses legacy profile terminology'
+            ), f'{locale}:{key} still uses legacy profile terminology'
 
 
 def test_new_tab_accessible_name_describes_the_connection_launcher():
@@ -190,30 +215,14 @@ def test_english_visible_fallbacks_avoid_legacy_connection_terms():
 
 
 def test_all_locales_preserve_translation_placeholders():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
-    locale_starts = list(
-        re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE)
-    )
-    placeholders_by_locale = {}
-
-    for index, match in enumerate(locale_starts):
-        end = (
-            locale_starts[index + 1].start()
-            if index + 1 < len(locale_starts)
-            else source.index('\n};', match.end())
-        )
-        block = source[match.end():end]
-        placeholders_by_locale[match.group(1)] = {
-            line_match.group(1): set(re.findall(
-                r'\{[a-zA-Z][a-zA-Z0-9_]*\}',
-                line_match.group(2),
-            ))
-            for line_match in re.finditer(
-                r"^        '([^']+)': (.+),$",
-                block,
-                re.MULTILINE,
-            )
+    translations = _translations_by_locale()
+    placeholders_by_locale = {
+        locale: {
+            key: set(re.findall(r'\{[a-zA-Z][a-zA-Z0-9_]*\}', value))
+            for key, value in entries.items()
         }
+        for locale, entries in translations.items()
+    }
 
     english = placeholders_by_locale['en']
     assert all(
@@ -223,17 +232,8 @@ def test_all_locales_preserve_translation_placeholders():
 
 
 def test_english_command_set_copy_explains_execution_boundaries():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
-    en_start = source.index('    en: {')
-    en_end = source.index('\n    vi: {', en_start)
-    english_block = source[en_start:en_end]
-    match = re.search(
-        r"'connection\.commandSetHint': '([^']+)'",
-        english_block,
-    )
+    hint = _inline_english_entries()['connection.commandSetHint'].lower()
 
-    assert match is not None
-    hint = match.group(1).lower()
     assert 'remote host' in hint
     assert 'not in webssh' in hint
     assert 'tmux' in hint
@@ -241,7 +241,6 @@ def test_english_command_set_copy_explains_execution_boundaries():
 
 
 def test_all_popup_translation_references_exist_in_every_locale():
-    i18n_source = Path('static/js/i18n.js').read_text(encoding='utf-8')
     source_paths = (
         sorted(Path('templates').glob('*.html'))
         + sorted(Path('static/js').glob('*.js'))
@@ -267,26 +266,11 @@ def test_all_popup_translation_references_exist_in_every_locale():
             )
         )
 
-    locale_starts = list(
-        re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', i18n_source, re.MULTILINE)
-    )
     missing_by_locale = {}
-    for index, match in enumerate(locale_starts):
-        end = (
-            locale_starts[index + 1].start()
-            if index + 1 < len(locale_starts)
-            else i18n_source.index('\n};', match.end())
-        )
-        locale_keys = set(
-            re.findall(
-                r"^        '([^']+)':",
-                i18n_source[match.end():end],
-                re.MULTILINE,
-            )
-        )
-        missing = sorted(referenced_keys - locale_keys)
+    for locale, locale_keys in _translations_by_locale().items():
+        missing = sorted(referenced_keys - set(locale_keys))
         if missing:
-            missing_by_locale[match.group(1)] = missing
+            missing_by_locale[locale] = missing
 
     assert missing_by_locale == {}
 

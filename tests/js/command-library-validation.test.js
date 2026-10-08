@@ -104,9 +104,20 @@ test('library OS filter keeps the shared catalog and combines search across cata
 
 test('empty library uses existing translations in all six languages', () => {
     const state = setup();
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../static/js/i18n.js'), 'utf8'), {
+    const context = vm.createContext({
         window: state.window, document: {addEventListener() {}},
     });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../static/js/i18n.js'), 'utf8'), context);
+    // Register the lazy language bundles the way fetchI18nBundle would.
+    for (const language of ['de', 'vi', 'fr', 'es', 'zh']) {
+        const table = JSON.parse(fs.readFileSync(
+            path.join(__dirname, `../../static/js/i18n/${language}.json`), 'utf8'));
+        context.__bundleTable = table;
+        vm.runInContext(
+            `Object.assign(translations, { ${language}: __bundleTable });`,
+            context,
+        );
+    }
     const expected = {en: 'No commands found', de: 'Keine Befehle gefunden', vi: 'Không tìm thấy lệnh', fr: 'Aucune commande trouvée', es: 'No se encontraron comandos', zh: '未找到命令'};
     for (const [language, text] of Object.entries(expected)) {
         state.window.i18n.currentLang = language;

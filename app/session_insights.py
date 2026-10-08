@@ -40,6 +40,17 @@ if command -v df >/dev/null 2>&1 && command -v awk >/dev/null 2>&1; then
     print "disk_available_kib=" $4
     print "disk_percent=" percent
   }'
+  df -Pk 2>/dev/null | awk '
+    NR > 1 && $1 ~ /^\// {
+      mount = $6
+      if (mount in seen) next
+      if (mount ~ /[|=]/ || length(mount) > 96) next
+      seen[mount] = 1
+      count++
+      if (count > 8) next
+      percent = $5; sub(/%$/, "", percent)
+      printf "disk_mount=%s|%s|%s|%s|%s\n", mount, $2, $3, $4, percent
+    }'
 fi
 if [ -r /proc/uptime ] && command -v awk >/dev/null 2>&1; then
   awk '{ print "uptime_seconds=" $1; exit }' /proc/uptime 2>/dev/null
@@ -54,6 +65,13 @@ else
   os_name=
 fi
 [ -n "$os_name" ] && printf 'os_name=%s\n' "$os_name"
+if command -v uname >/dev/null 2>&1; then
+  hostname_value=$(uname -n 2>/dev/null)
+  case "$hostname_value" in
+    *[![:alnum:]._-]*|'') ;;
+    *) printf 'hostname=%s\n' "$hostname_value" ;;
+  esac
+fi
 :
 """
 
@@ -130,14 +148,14 @@ fi
 _SINGLE_KEYS = {
     'cpu', 'mem_total_kib', 'mem_available_kib',
     'disk_total_kib', 'disk_used_kib', 'disk_available_kib',
-    'disk_percent', 'uptime_seconds', 'os_name',
+    'disk_percent', 'uptime_seconds', 'os_name', 'hostname',
     'load_1', 'load_5', 'load_15', 'cpu_count',
     'swap_total_kib', 'swap_free_kib',
     'network_received_bytes', 'network_transmitted_bytes',
     'process_total', 'process_zombies',
 }
 _MULTI_KEYS = {
-    'process_cpu', 'process_memory', 'permission_denied',
+    'process_cpu', 'process_memory', 'permission_denied', 'disk_mount',
 }
 _PERMISSION_SCOPES = ('processes',)
 
@@ -171,6 +189,36 @@ def _safe_text(value, *, maximum):
     if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
         return None
     return normalized
+
+
+def _parse_disk_mount_rows(rows):
+    """Parse ``mount|total|used|available|percent`` disk rows (bounded)."""
+    parsed = []
+    seen_mounts = set()
+    for row in rows[:8]:
+        parts = row.split('|')
+        if len(parts) != 5:
+            continue
+        mount = _safe_text(parts[0], maximum=96)
+        if not mount or mount in seen_mounts or mount.startswith('|'):
+            continue
+        total = _optional_int({'t': parts[1]}, 't', maximum=2 ** 63 - 1)
+        used = _optional_int({'t': parts[2]}, 't', maximum=2 ** 63 - 1)
+        available = _optional_int({'t': parts[3]}, 't', maximum=2 ** 63 - 1)
+        percent = _optional_int({'t': parts[4]}, 't', maximum=100)
+        if None in (total, used, available, percent):
+            continue
+        if total <= 0 or used > total or available > total:
+            continue
+        seen_mounts.add(mount)
+        parsed.append({
+            'mount': mount,
+            'total_kib': total,
+            'used_kib': used,
+            'available_kib': available,
+            'percent': percent,
+        })
+    return parsed
 
 
 def _parse_process_rows(rows):
@@ -267,6 +315,22 @@ def parse_linux_stats(text, *, max_bytes=DEFAULT_MAX_BYTES):
             'percent': disk_percent,
         }
 
+    disk_mounts = _parse_disk_mount_rows(repeated['disk_mount'])
+    if disk_mounts:
+        result['disks'] = disk_mounts
+        if result.get('disk') is None:
+            root_mount = next(
+                (entry for entry in disk_mounts if entry['mount'] == '/'),
+                None,
+            )
+            if root_mount is not None:
+                result['disk'] = {
+                    'total_kib': root_mount['total_kib'],
+                    'used_kib': root_mount['used_kib'],
+                    'available_kib': root_mount['available_kib'],
+                    'percent': root_mount['percent'],
+                }
+
     uptime_value = _optional_float(
         values, 'uptime_seconds', maximum=2 ** 63 - 1
     )
@@ -276,6 +340,10 @@ def parse_linux_stats(text, *, max_bytes=DEFAULT_MAX_BYTES):
     os_name = _safe_text(values.get('os_name'), maximum=200)
     if os_name is not None:
         result['os_name'] = os_name
+
+    hostname = _safe_text(values.get('hostname'), maximum=120)
+    if hostname is not None:
+        result['hostname'] = hostname
 
     load_values = (
         _optional_float(values, 'load_1'),

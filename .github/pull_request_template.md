@@ -22,4 +22,4 @@ dependency updates do not need a duplicate planning issue.
 Merging implements the change; it does not publish a versioned release. Link the
 release-readiness issue when relevant. Record deferred work and the reason there.
 
-See [the planning workflow](https://github.com/bifrost0x/webssh/blob/main/docs/project-planning.md).
+See [the planning workflow](https://github.com/zhengwuji/web-ssh/blob/main/docs/project-planning.md).

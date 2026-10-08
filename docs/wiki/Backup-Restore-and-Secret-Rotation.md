@@ -12,7 +12,7 @@ Current archives use format version 2. The verifier also understands legacy form
 
 ## Online backup in the web interface
 
-![WebSSH backup and restore safety flow with administrator step-up, maintenance mode, private staging, validation, and atomic activation](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/backup-restore-safety.png?raw=true)
+![WebSSH backup and restore safety flow with administrator step-up, maintenance mode, private staging, validation, and atomic activation](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/backup-restore-safety.png?raw=true)
 
 Backup and restore share the same authorization boundary but use different safe
 paths. A backup coordinates writers before collecting consistent state. A

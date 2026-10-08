@@ -2,8 +2,8 @@
   "version": 1,
   "fallbackSeconds": 30,
   "sources": [
-    "https://github.com/bifrost0x/webssh/actions/runs/35440057013/job/105889203397",
-    "https://github.com/bifrost0x/webssh/actions/runs/35440057013/job/105889203471"
+    "https://github.com/zhengwuji/web-ssh/actions/runs/35440057013/job/105889203397",
+    "https://github.com/zhengwuji/web-ssh/actions/runs/35440057013/job/105889203471"
   ],
   "tests": {
     "tests/e2e/account-menu.spec.js::account menu and settings stay inside a mobile viewport": 2.202,

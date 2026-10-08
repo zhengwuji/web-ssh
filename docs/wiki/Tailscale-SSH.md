@@ -109,7 +109,7 @@ services:
       - NET_RAW
 
   webssh:
-    image: ghcr.io/bifrost0x/webssh:latest
+    image: ghcr.io/zhengwuji/web-ssh:latest
     restart: unless-stopped
     network_mode: service:tailscale
     depends_on:

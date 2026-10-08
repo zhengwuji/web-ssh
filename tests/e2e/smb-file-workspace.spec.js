@@ -190,7 +190,7 @@ test('SMB dialog clears credentials, recovers from auth failure and opens an enc
     const signInHelp = page.locator('[data-i18n="smb.signInHelp"]');
     await expect(signInHelp).toHaveAttribute(
         'href',
-        'https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers',
+        'https://github.com/zhengwuji/web-ssh/wiki/SFTP-File-Workspace-and-Transfers',
     );
     await expect(signInHelp).toHaveAttribute('rel', 'noopener noreferrer');
     await expect(page.locator('#smbSourceHost')).toBeFocused();

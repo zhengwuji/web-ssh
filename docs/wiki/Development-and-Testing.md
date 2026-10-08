@@ -60,6 +60,13 @@ npm run vendor:check
 ```
 
 Do not add runtime CDN scripts, fonts, or styles. The application must remain offline-capable and satisfy CSP and vendor-integrity tests.
+Theme background originals are archived outside the served tree in
+`assets/theme-backgrounds/` so the shipped `static/` tree carries only the
+derived WebP files. Keep these PNG sources for future regeneration:
+`arctic-frost.png`, `carbon-glass.png`, `matrix-signal.png`,
+`navy-topography.png`, `neon-circuit.png`, `noir-architecture.png`,
+`obsidian-glass.png`, `paper-blueprint.png`, `retro-amber.png`, and
+`rose-brushed-metal.png`.
 
 ## JavaScript and E2E tests
 

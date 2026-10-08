@@ -33,6 +33,16 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 _JUMP_HOST_USAGE_DETAIL_LIMIT = 20
 
+# Compiled once: these run on every profile/jump-host validation.
+# ``fullmatch`` (instead of ``match`` with ``^...$``) is required because ``$``
+# also matches immediately before a trailing newline, so ``"alice\n"`` used to
+# pass validation.
+_USERNAME_PATTERN = re.compile(r'[a-zA-Z0-9_\-\.]{1,32}')
+_HOSTNAME_PATTERN = re.compile(
+    r'[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
+    r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*'
+)
+
 
 def _is_valid_host(host):
     host = (host or '').strip()
@@ -43,11 +53,7 @@ def _is_valid_host(host):
         return True
     except ValueError:
         pass
-    pattern = re.compile(
-        r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
-        r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-    )
-    return bool(pattern.match(host))
+    return bool(_HOSTNAME_PATTERN.fullmatch(host))
 
 
 def _get_file(user_id):
@@ -305,7 +311,7 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
             return None, "Invalid port number"
 
         username = str(username).strip()
-        if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+        if not _USERNAME_PATTERN.fullmatch(username):
             return None, "Invalid username format"
 
         if auth_type not in ['password', 'key']:

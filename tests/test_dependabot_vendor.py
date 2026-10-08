@@ -17,7 +17,7 @@ def _payloads():
     event = {
         'action': 'completed',
         'repository': {
-            'full_name': 'bifrost0x/webssh',
+            'full_name': 'zhengwuji/web-ssh',
             'default_branch': 'main',
         },
         'workflow_run': {
@@ -27,7 +27,7 @@ def _payloads():
             'conclusion': 'failure',
             'head_branch': 'dependabot/npm_and_yarn/npm-minor-and-patch-123',
             'head_sha': HEAD_SHA,
-            'head_repository': {'full_name': 'bifrost0x/webssh'},
+            'head_repository': {'full_name': 'zhengwuji/web-ssh'},
             'actor': {'login': 'dependabot[bot]'},
             'pull_requests': [{'number': 81}],
         },
@@ -39,7 +39,7 @@ def _payloads():
         'head': {
             'ref': 'dependabot/npm_and_yarn/npm-minor-and-patch-123',
             'sha': HEAD_SHA,
-            'repo': {'full_name': 'bifrost0x/webssh'},
+            'repo': {'full_name': 'zhengwuji/web-ssh'},
         },
         'base': {'ref': 'main'},
         'changed_files': 2,

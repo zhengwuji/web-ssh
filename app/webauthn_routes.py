@@ -27,12 +27,13 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
+from . import webauthn_context
 
 from .audit_logger import (
     log_rate_limit_exceeded,
     log_security_event,
 )
-from .auth import check_rate_limit
+from .auth import check_rate_limit, check_socket_rate_limit
 from .auth_assurance import (
     AssuranceLevel,
     PendingAuthenticationError,
@@ -58,6 +59,10 @@ webauthn_blueprint = Blueprint("webauthn", __name__)
 _authentication_lock = Lock()
 _registration_lock = Lock()
 _AUTHENTICATION_DESCRIPTOR_COUNT = 10
+
+
+class _AccountRateLimited(Exception):
+    """Raised inside the verification lock when the account budget is spent."""
 
 
 def _require_enabled():
@@ -219,7 +224,7 @@ def registration_options():
         return jsonify({"error": "Passkey limit reached"}), 409
     legacy_upgrade = data.get("legacy_upgrade") is True
     options = generate_registration_options(
-        rp_id=config.WEBAUTHN_RP_ID,
+        rp_id=webauthn_context.effective_rp_id(),
         rp_name=config.WEBAUTHN_RP_NAME,
         user_id=str(current_user.id).encode("ascii"),
         user_name=current_user.username,
@@ -265,8 +270,8 @@ def verify_registration():
         verified = verify_registration_response(
             credential=credential,
             expected_challenge=challenge,
-            expected_rp_id=config.WEBAUTHN_RP_ID,
-            expected_origin=config.WEBAUTHN_ORIGIN,
+            expected_rp_id=webauthn_context.effective_rp_id(),
+            expected_origin=webauthn_context.effective_origin(),
             require_user_verification=True,
         )
     except Exception as exc:
@@ -402,7 +407,7 @@ def authentication_options():
         if not allow_credentials:
             return jsonify({"error": "No passkey is available"}), 409
     options = generate_authentication_options(
-        rp_id=config.WEBAUTHN_RP_ID,
+        rp_id=webauthn_context.effective_rp_id(),
         allow_credentials=allow_credentials,
         user_verification=UserVerificationRequirement.REQUIRED,
     )
@@ -463,11 +468,19 @@ def verify_authentication():
             ):
                 raise ChallengeError("Credential is not available")
             username = user.username
+            # Per-account bound: distributed guessing from many IPs must not
+            # exceed the same account's verification budget.
+            if config.RATELIMIT_ENABLED and check_socket_rate_limit(
+                user.id,
+                "webauthn_verify_account",
+                config.RATELIMIT_LOGIN_LIMIT,
+            ):
+                raise _AccountRateLimited()
             verified = verify_authentication_response(
                 credential=data.get("credential"),
                 expected_challenge=challenge,
-                expected_rp_id=config.WEBAUTHN_RP_ID,
-                expected_origin=config.WEBAUTHN_ORIGIN,
+                expected_rp_id=webauthn_context.effective_rp_id(),
+                expected_origin=webauthn_context.effective_origin(),
                 credential_public_key=bytes(row.public_key),
                 credential_current_sign_count=row.sign_count,
                 require_user_verification=True,
@@ -500,6 +513,10 @@ def verify_authentication():
             direct_pending = consume_pending(token, binding)
             finalize_login(direct_pending, methods=["passkey"])
             continuation = "/"
+    except _AccountRateLimited:
+        db.session.rollback()
+        log_rate_limit_exceeded("webauthn_verify_account", client_ip)
+        return jsonify({"error": "Too many login attempts"}), 429
     except Exception as exc:
         db.session.rollback()
         log_security_event(

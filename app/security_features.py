@@ -59,16 +59,16 @@ _CONFIGURATION_KEYS = {
     'recovery': ('RECOVERY_CODES_ENABLED',),
 }
 _DOCUMENTATION_URLS = {
-    'passkey': 'https://github.com/bifrost0x/webssh#authentication-features',
-    'totp': 'https://github.com/bifrost0x/webssh#authentication-features',
+    'passkey': 'https://github.com/zhengwuji/web-ssh#authentication-features',
+    'totp': 'https://github.com/zhengwuji/web-ssh#authentication-features',
     'oidc': (
-        'https://github.com/bifrost0x/webssh/wiki/OpenID-Connect'
+        'https://github.com/zhengwuji/web-ssh/wiki/OpenID-Connect'
     ),
     'ldap': (
-        'https://github.com/bifrost0x/webssh/blob/main/'
+        'https://github.com/zhengwuji/web-ssh/blob/main/'
         'docs/ldap-authentication.md'
     ),
-    'recovery': 'https://github.com/bifrost0x/webssh#authentication-features',
+    'recovery': 'https://github.com/zhengwuji/web-ssh#authentication-features',
 }
 
 

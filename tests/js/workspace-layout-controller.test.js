@@ -64,10 +64,12 @@ function fixture(width = 1280) {
         'contextFilesTab',
         'contextCommandsTab',
         'contextDiagnosticsTab',
+        'contextMonitorTab',
         'contextNotesTab',
         'contextFilesPanel',
         'contextCommandsPanel',
         'contextDiagnosticsPanel',
+        'contextMonitorPanel',
         'contextNotesPanel',
         'mobileMenuBtn',
         'headerButtons',
@@ -77,9 +79,10 @@ function fixture(width = 1280) {
         elements.contextFilesTab,
         elements.contextCommandsTab,
         elements.contextDiagnosticsTab,
+        elements.contextMonitorTab,
         elements.contextNotesTab,
     ];
-    ['files', 'commands', 'diagnostics', 'notes'].forEach((name, index) => {
+    ['files', 'commands', 'diagnostics', 'monitor', 'notes'].forEach((name, index) => {
         contextTabs[index].setAttribute('data-workspace-context', name);
     });
     elements.contextWorkspaceTabs.querySelectorAll = selector => (

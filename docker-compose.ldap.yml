@@ -23,7 +23,7 @@ services:
 
   # Isolated helper with exclusive write access to LDAP secrets.
   ldap-tools:
-    image: ghcr.io/bifrost0x/webssh:latest
+    image: ghcr.io/zhengwuji/web-ssh:latest
     profiles: ["ldap-tools"]
     restart: "no"
     network_mode: none

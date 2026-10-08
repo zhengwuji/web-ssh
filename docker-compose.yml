@@ -4,7 +4,7 @@
 
 services:
   webssh:
-    image: ghcr.io/bifrost0x/webssh:latest
+    image: ghcr.io/zhengwuji/web-ssh:latest
     container_name: webssh
     restart: unless-stopped
     # Allows the app's bounded shutdown (maximum 30s) to finish.
@@ -18,6 +18,10 @@ services:
       - ALLOW_CORS_WILDCARD=true
       - TRUSTED_PROXIES=0
       - SESSION_COOKIE_SECURE=false
+      # The app default now blocks SSH to internal/loopback addresses (SSRF
+      # protection). This profile opts out because reaching internal hosts is
+      # the homelab use case; keep "true" if users must not probe your LAN.
+      - BLOCK_INTERNAL_SSH=false
 
       # Persistent sessions; falls back when tmux is unavailable remotely.
       - TMUX_ENABLED=true
@@ -59,12 +63,27 @@ services:
       # - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
       # - TAILSCALE_SSH_INTERFACE=tailscale0
 
-      # Enabled by default: host-key management, recovery codes, audit export.
-      # The false switches disable them; internal-target blocking is opt-in.
+      # Enabled by default: host-key management, recovery codes, audit export,
+      # passkeys (toggle per-feature in Admin -> Authentication). The false
+      # switches disable them. Internal-target blocking is already the app
+      # default; BLOCK_INTERNAL_SSH=false above opts out for homelab.
       # - HOST_KEY_MANAGEMENT_ENABLED=false
       # - RECOVERY_CODES_ENABLED=false
       # - AUDIT_EXPORT_ENABLED=false
-      # - BLOCK_INTERNAL_SSH=true
+      # - WEBAUTHN_ENABLED=false
+
+      # Built-in HTTPS (optional). Modes: off (default, put a reverse proxy
+      # in front), self-signed (domain or IP, auto-rotated), acme (publicly
+      # trusted certificate via acme.sh HTTP-01; publish port 80 and set a
+      # DNS-resolvable domain + email), manual (mount your own PEM files at
+      # $DATA_DIR/tls). Renewal is automatic in every non-off mode. See
+      # docs/tls.md.
+      # - WEBSSH_TLS_MODE=acme
+      # - WEBSSH_TLS_DOMAIN=ssh.example.com
+      # - WEBSSH_TLS_EMAIL=you@example.com
+      # ports:
+      #   - "80:80"     # ACME HTTP-01 challenge (acme mode only)
+      #   - "443:5000"  # HTTPS
 
       # Optional SMB client support. No SMB server port is published here.
       # - SMB_ENABLED=true

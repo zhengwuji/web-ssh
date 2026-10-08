@@ -29,8 +29,8 @@ Docker host, data volume, logs, and backups as privileged infrastructure.
 ## Deploy with the production overlay
 
 ```bash
-curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.production.yml
+curl -O https://raw.githubusercontent.com/zhengwuji/web-ssh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/zhengwuji/web-ssh/main/docker-compose.production.yml
 
 export WEBSSH_ORIGIN=https://ssh.example.com
 
@@ -56,7 +56,7 @@ For the current image, append `-f docker-compose.hardened.yml` to explicitly
 select a read-only root, dropped capabilities, private runtime tmpfs and resource
 limits. Obtain this file from the same release as the other Compose files.
 Review custom write paths, numeric UID/GID and capacity first. See
-[production container boundaries](https://github.com/bifrost0x/webssh/blob/main/docs/production-container.md)
+[production container boundaries](https://github.com/zhengwuji/web-ssh/blob/main/docs/production-container.md)
 for configuration and backup behavior. The extra overlay does not replace the
 production HTTPS and authentication settings.
 

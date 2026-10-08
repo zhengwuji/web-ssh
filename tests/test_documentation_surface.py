@@ -285,7 +285,7 @@ def test_readme_routes_long_form_runbooks_to_the_published_wiki():
         "### Project Structure",
     ):
         assert removed_heading not in readme
-    live_wiki = "https://github.com/bifrost0x/webssh/wiki"
+    live_wiki = "https://github.com/zhengwuji/web-ssh/wiki"
     assert f"[WebSSH Wiki]({live_wiki})" in readme
     assert "[versioned source](docs/wiki/Home.md)" in readme
     for guide in (
@@ -541,9 +541,9 @@ def test_readme_exposes_the_public_product_entry_points():
     """Users can reach the package, product site, and separate code graph."""
     readme = README.read_text(encoding="utf-8")
     for public_url in (
-        "https://github.com/bifrost0x/webssh/pkgs/container/webssh",
-        "https://bifrost0x.github.io/webssh/",
-        "https://bifrost0x.github.io/webssh/code-graph/",
+        "https://github.com/zhengwuji/web-ssh/pkgs/container/webssh",
+        "https://zhengwuji.github.io/web-ssh/",
+        "https://zhengwuji.github.io/web-ssh/code-graph/",
     ):
         assert public_url in readme
 
@@ -556,7 +556,7 @@ def test_readme_code_map_badge_targets_graph_subpath():
     link_position = readme.rfind("<a href=", 0, badge_position)
 
     assert (
-        'href="https://bifrost0x.github.io/webssh/code-graph/"'
+        'href="https://zhengwuji.github.io/web-ssh/code-graph/"'
         in readme[link_position:badge_position]
     )
 

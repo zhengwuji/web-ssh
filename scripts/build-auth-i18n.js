@@ -21,17 +21,34 @@ function read(relativePath) {
 }
 
 function parseTranslations(source) {
-    const declaration = 'const translations = ';
-    const runtimeMarker = 'const BrowserPreferences = ';
+    const declaration = 'const translations = {';
+    // The runtime slice must start at the first declaration the runtime
+    // depends on. The lazy-bundle helpers (I18N_SUPPORTED_LANGUAGES,
+    // i18nPendingBundles) sit before BrowserPreferences and are referenced
+    // by fetchI18nBundle, so slicing from BrowserPreferences would leave
+    // them undefined in the generated bundle (eslint no-undef).
+    const runtimeMarker = 'const I18N_SUPPORTED_LANGUAGES = ';
     const objectStart = source.indexOf(declaration);
     const runtimeStart = source.indexOf(runtimeMarker);
     if (objectStart < 0 || runtimeStart < 0 || runtimeStart <= objectStart) {
         throw new Error('Unable to locate the translation table and runtime.');
     }
+    // The table ends at its own closing "};"; bundle helpers may sit
+    // between the table and the runtime, so do not slice by marker.
+    const endMatch = source.slice(objectStart, runtimeStart)
+        .match(/\r?\n[ \t]*\};/);
+    const objectEnd = endMatch
+        ? objectStart + endMatch.index
+        : -1;
+    if (objectEnd < 0 || objectEnd >= runtimeStart) {
+        throw new Error('Unable to locate the end of the translation table.');
+    }
     const objectLiteral = source
-        .slice(objectStart + declaration.length, runtimeStart)
-        .trim()
-        .replace(/;$/, '');
+        .slice(
+            objectStart + declaration.length - 1,
+            objectStart + endMatch.index + endMatch[0].length - 1,
+        )
+        .trim();
     const translations = vm.runInNewContext(`(${objectLiteral})`, Object.create(null));
     return {
         translations,
@@ -56,9 +73,27 @@ function referencedTranslationKeys(translations) {
     return [...keys].sort();
 }
 
+function loadLanguageBundles() {
+    // The runtime source ships English inline; the other locales live as
+    // lazy-loaded JSON bundles next to i18n.js.
+    const bundles = {};
+    const bundleDir = path.join(projectRoot, 'static/js/i18n');
+    if (!fs.existsSync(bundleDir)) return bundles;
+    for (const entry of fs.readdirSync(bundleDir)) {
+        const match = entry.match(/^([a-z][a-z])\.json$/);
+        if (!match) continue;
+        bundles[match[1]] = JSON.parse(fs.readFileSync(path.join(bundleDir, entry), 'utf8'));
+    }
+    return bundles;
+}
+
 function build() {
     const fullSource = fs.readFileSync(sourcePath, 'utf8');
     const { translations, runtime } = parseTranslations(fullSource);
+    const bundles = loadLanguageBundles();
+    for (const [locale, table] of Object.entries(bundles)) {
+        if (!translations[locale]) translations[locale] = table;
+    }
     const locales = Object.keys(translations);
     const keys = referencedTranslationKeys(translations);
     if (locales.length === 0 || keys.length === 0) {

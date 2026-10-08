@@ -8,6 +8,7 @@ import os
 import re
 from collections.abc import MutableMapping
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 import paramiko
@@ -23,6 +24,35 @@ from .storage_utils import (
 
 class RevokedHostKeyError(paramiko.SSHException):
     """Raised when a server presents an explicitly revoked host key."""
+
+
+class UnconfirmedHostKeyError(paramiko.SSHException):
+    """Raised when a first-seen host key was not accepted by the user.
+
+    Carries the presentation details (type and SHA256-style colon fingerprint)
+    so the connection layer can surface them without re-deriving anything.
+    """
+
+    def __init__(self, hostname, key_type, fingerprint):
+        super().__init__(
+            f"Host key for {hostname!r} is not trusted yet"
+        )
+        self.hostname = hostname
+        self.key_type = key_type
+        self.fingerprint = fingerprint
+
+
+_KNOWN_HOSTS_FIELD_SEPARATOR = re.compile(r"[ \t]+")
+_ENTRY_ID = re.compile(r"[0-9a-f]{64}")
+_BRACKETED_HOST = re.compile(r"\[(.+)]:(\d+)")
+
+
+@lru_cache(maxsize=512)
+def _compiled_host_pattern(pattern):
+    """Compile a known_hosts glob pattern once per distinct pattern."""
+    expression = re.escape(pattern)
+    expression = expression.replace(r"\*", ".*").replace(r"\?", ".")
+    return re.compile(expression, re.IGNORECASE)
 
 
 class _ParsedHostKeyFile:
@@ -46,9 +76,7 @@ def _host_pattern_matches(hostname, pattern):
         except (AssertionError, TypeError, ValueError, binascii.Error):
             return False
 
-    expression = re.escape(pattern)
-    expression = expression.replace(r"\*", ".*").replace(r"\?", ".")
-    return re.fullmatch(expression, hostname, re.IGNORECASE) is not None
+    return _compiled_host_pattern(pattern).fullmatch(hostname) is not None
 
 
 def _entry_matches_hostname(hostname, entry):
@@ -187,23 +215,49 @@ class _LayeredHostKeys(paramiko.HostKeys):
         return False
 
 
+def _format_fingerprint(key):
+    fingerprint = binascii.hexlify(key.get_fingerprint()).decode("ascii")
+    return ":".join(
+        fingerprint[index:index + 2]
+        for index in range(0, len(fingerprint), 2)
+    )
+
+
 class _PerUserMissingHostKeyPolicy(paramiko.MissingHostKeyPolicy):
-    def __init__(self, store):
+    def __init__(self, store, decision_callback=None, context="target"):
         self.store = store
+        self.decision_callback = decision_callback
+        self.context = context
 
     def missing_host_key(self, client, hostname, key):
-        fingerprint = binascii.hexlify(key.get_fingerprint()).decode("ascii")
-        formatted = ":".join(
-            fingerprint[index:index + 2]
-            for index in range(0, len(fingerprint), 2)
-        )
-        log_warning(
-            "SECURITY: New SSH host key detected",
-            host=hostname,
-            key_type=key.get_name(),
-            fingerprint=formatted,
-            user_id=self.store.user_id,
-        )
+        fingerprint = _format_fingerprint(key)
+        if self.decision_callback is not None:
+            accepted = self.decision_callback(
+                hostname,
+                key.get_name(),
+                fingerprint,
+                self.context,
+            )
+            if accepted is not True:
+                log_warning(
+                    "SECURITY: New SSH host key not accepted by user",
+                    host=hostname,
+                    key_type=key.get_name(),
+                    fingerprint=fingerprint,
+                    user_id=self.store.user_id,
+                    context=self.context,
+                )
+                raise UnconfirmedHostKeyError(
+                    hostname, key.get_name(), fingerprint
+                )
+        else:
+            log_warning(
+                "SECURITY: New SSH host key detected",
+                host=hostname,
+                key_type=key.get_name(),
+                fingerprint=fingerprint,
+                user_id=self.store.user_id,
+            )
         self.store.record(hostname, key)
         client.get_host_keys().add(hostname, key.get_name(), key)
         log_info(
@@ -245,8 +299,12 @@ class HostKeyStore:
         user_file = self._load_or_empty(self.user_path)
         client._host_keys = _LayeredHostKeys(global_file, user_file)
 
-    def missing_key_policy(self) -> paramiko.MissingHostKeyPolicy:
-        return _PerUserMissingHostKeyPolicy(self)
+    def missing_key_policy(
+        self, decision_callback=None, context="target"
+    ) -> paramiko.MissingHostKeyPolicy:
+        return _PerUserMissingHostKeyPolicy(
+            self, decision_callback=decision_callback, context=context
+        )
 
     def record(self, hostname: str, key: paramiko.PKey) -> None:
         """Append a first-seen key without rewriting the user's raw file."""
@@ -338,9 +396,7 @@ class HostKeyStore:
         owner_id,
         lock_key,
     ):
-        if not isinstance(entry_id, str) or not re.fullmatch(
-            r"[0-9a-f]{64}", entry_id
-        ):
+        if not isinstance(entry_id, str) or not _ENTRY_ID.fullmatch(entry_id):
             return False
         path = Path(path)
         with storage_lock(lock_key):
@@ -378,7 +434,7 @@ class HostKeyStore:
         if not encoded or len(encoded) > 16384 or "\n" in value or "\r" in value:
             return None, "Enter exactly one known_hosts entry"
 
-        fields = re.split(r"[ \t]+", value.strip())
+        fields = _KNOWN_HOSTS_FIELD_SEPARATOR.split(value.strip())
         marker = None
         if fields and fields[0].startswith("@"):
             marker = fields.pop(0)
@@ -415,7 +471,7 @@ class HostKeyStore:
                 existing_line = raw_line.decode("utf-8").strip()
                 if not existing_line or existing_line.startswith("#"):
                     continue
-                existing_fields = re.split(r"[ \t]+", existing_line)
+                existing_fields = _KNOWN_HOSTS_FIELD_SEPARATOR.split(existing_line)
                 existing_marker = None
                 if existing_fields[0].startswith("@"):
                     existing_marker = existing_fields.pop(0)
@@ -456,7 +512,7 @@ class HostKeyStore:
             ) from exc
         if not line or line.startswith("#"):
             return None
-        fields = re.split(r"[ \t]+", line)
+        fields = _KNOWN_HOSTS_FIELD_SEPARATOR.split(line)
         marker = None
         if fields[0].startswith("@"):
             marker = fields.pop(0)
@@ -509,7 +565,7 @@ class HostKeyStore:
     def _split_management_host(host_token):
         if host_token.startswith("|1|"):
             return "(hashed hostname)", None
-        match = re.fullmatch(r"\[(.+)]:(\d+)", host_token)
+        match = _BRACKETED_HOST.fullmatch(host_token)
         if match:
             return match.group(1), int(match.group(2))
         return host_token, 22
@@ -552,7 +608,7 @@ class HostKeyStore:
                 continue
 
             marker = None
-            fields = re.split(r"[ \t]+", line)
+            fields = _KNOWN_HOSTS_FIELD_SEPARATOR.split(line)
             if fields[0].startswith("@"):
                 marker = fields.pop(0)
                 if marker not in ("@revoked", "@cert-authority"):

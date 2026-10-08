@@ -20,6 +20,7 @@ from webauthn.helpers.structs import (
 )
 
 import config
+from . import webauthn_context
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
@@ -225,7 +226,7 @@ def passkey_step_up_options():
         return _failure()
     rows = WebAuthnCredential.query.filter_by(user_id=current_user.id).all()
     options = generate_authentication_options(
-        rp_id=config.WEBAUTHN_RP_ID,
+        rp_id=webauthn_context.effective_rp_id(),
         allow_credentials=[
             PublicKeyCredentialDescriptor(id=bytes(row.credential_id))
             for row in rows
@@ -280,8 +281,8 @@ def passkey_step_up_verify():
             verified = verify_authentication_response(
                 credential=credential,
                 expected_challenge=challenge,
-                expected_rp_id=config.WEBAUTHN_RP_ID,
-                expected_origin=config.WEBAUTHN_ORIGIN,
+                expected_rp_id=webauthn_context.effective_rp_id(),
+                expected_origin=webauthn_context.effective_origin(),
                 credential_public_key=bytes(row.public_key),
                 credential_current_sign_count=row.sign_count,
                 require_user_verification=True,

@@ -5,6 +5,17 @@ def read(path):
     return Path(path).read_text(encoding='utf-8')
 
 
+# English stays inline in static/js/i18n.js; every other supported locale is a
+# lazily fetched static/js/i18n/<lang>.json bundle.
+def translated_locale_count(key):
+    inline = read('static/js/i18n.js').count(f"'{key}':")
+    bundles = sum(
+        bundle.read_text(encoding='utf-8').count(f'"{key}":')
+        for bundle in sorted(Path('static/js/i18n').glob('*.json'))
+    )
+    return inline + bundles
+
+
 def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first():
     template = read('templates/index.html')
     assert 'id="noSessions"' not in template
@@ -59,9 +70,15 @@ def test_merged_profile_frontend_assets_use_content_addressed_urls():
 
 def test_index_exposes_only_bounded_numeric_transfer_limits():
     template = read('templates/index.html')
+    page_context = read('static/js/page-context.js')
 
-    assert 'window.WEBSSH_TRANSFER_LIMITS = Object.freeze(' in template
-    assert 'transfer_limits | tojson' in template
+    # The inline bootstrap moved into page-context.js when the CSP dropped
+    # script-src 'unsafe-inline'; the template now only carries the data
+    # attribute that page-context.js freezes for the transfer clients.
+    assert 'data-transfer-limits="{{ transfer_limits|default({})|tojson|forceescape }}"' in template
+    assert "static_asset_url(filename='js/page-context.js')" in template
+    assert 'window.WEBSSH_TRANSFER_LIMITS = Object.freeze(' in page_context
+    assert 'window.WEBSSH_TRANSFER_LIMITS = Object.freeze(' not in template
 
 
 def test_profile_manager_builds_safe_contextual_launcher_buttons():
@@ -407,9 +424,7 @@ def test_profile_management_keeps_toolbar_controls_outside_the_scroll_region():
 
 
 def test_profile_collapse_all_is_translated_for_every_supported_locale():
-    source = read('static/js/i18n.js')
-
-    assert source.count("'profiles.collapseAll':") == 6
+    assert translated_locale_count('profiles.collapseAll') == 6
 
 
 def test_profile_groups_support_precise_handle_drag_without_favorite_targets():

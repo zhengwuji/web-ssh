@@ -99,7 +99,7 @@ Command sets combine ordered steps. A step can reference a library command or
 contain free text. Sets can be duplicated, reordered, assigned to profiles, and
 launched for an active session.
 
-![WebSSH command-set workflow from saved connections through ordered steps and profile assignment](https://github.com/bifrost0x/webssh/blob/main/assets/command-sets.gif?raw=true)
+![WebSSH command-set workflow from saved connections through ordered steps and profile assignment](https://github.com/zhengwuji/web-ssh/blob/main/assets/command-sets.gif?raw=true)
 
 Profiles use an explicit startup mode:
 

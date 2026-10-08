@@ -10,6 +10,7 @@
         const diagnosticsModule = root.SessionDiagnosticsModule;
         const inventoryModule = root.SessionRuntimeInventoryModule;
         const chartsModule = root.SessionDiagnosticsCharts;
+        const monitorModule = root.SessionMonitorModule;
         const filesModule = root.SessionFilesPanelModule;
         const workspaceModule = root.SessionWorkspaceModule;
         const fileManager = root.getSFTPFileManager?.();
@@ -28,6 +29,7 @@
         let filesController = null;
         let coordinator = null;
         let insightsController = null;
+        let monitorController = null;
         let inventoryController = null;
         let diagnosticsController = null;
         let lastInsightsState = { status: 'disconnected', sessionId: null };
@@ -63,10 +65,14 @@
         }
 
         function syncInsightsVisibility() {
+            const activeContext = selectedContext();
             coordinator.setVisible(
                 documentRef.visibilityState !== 'hidden'
-                && selectedContext() === 'diagnostics'
-                && diagnosticsController?.isOpen()
+                && (
+                    (activeContext === 'diagnostics'
+                        && diagnosticsController?.isOpen())
+                    || activeContext === 'monitor'
+                )
             );
         }
 
@@ -120,6 +126,13 @@
                 !transportReady && active?.connected ? { ...state, status: 'reconnecting' } : state,
                 active, lastInventoryState,
             );
+            monitorController?.render(
+                !transportReady && active?.connected ? { ...state, status: 'reconnecting' } : state,
+                active,
+            );
+            root.workspaceLayoutController?.setContextAvailability?.(
+                'monitor', Boolean(active?.connected)
+            );
             applySessionContextDefault();
             syncContextControllers();
         }
@@ -159,6 +172,13 @@
             },
         });
         insightsController = insightsModule.createController({ socket, render: renderInsights });
+        monitorController = monitorModule ? monitorModule.createController({
+            document: documentRef,
+            window: root,
+            translate(key) {
+                return root.i18n?.t?.(key);
+            },
+        }) : null;
         const wideDesktopQuery = root.matchMedia('(min-width: 1440px)');
         const sftpCapabilityTracker = workspaceModule.createSftpCapabilityTracker({
             socket,
@@ -245,6 +265,7 @@
             const removedSessionId = event?.detail?.sessionId;
             directorySync?.removeSession(removedSessionId);
             insightsController?.removeSession(removedSessionId);
+            monitorController?.removeSession(removedSessionId);
             inventoryController?.removeSession(removedSessionId);
             sftpCapabilityTracker.remove(removedSessionId);
             coordinator.removeSession(removedSessionId);

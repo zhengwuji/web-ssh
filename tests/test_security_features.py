@@ -149,7 +149,7 @@ def test_provider_status_exposes_configuration_names_and_documentation_only(
         'OIDC_REDIRECT_URI',
     )
     assert oidc['documentation_url'] == (
-        'https://github.com/bifrost0x/webssh/wiki/OpenID-Connect'
+        'https://github.com/zhengwuji/web-ssh/wiki/OpenID-Connect'
     )
     assert ldap['configuration_keys'] == (
         'LDAP_ENABLED',

@@ -21,10 +21,11 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/sftp-file-manager.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/session-workspace.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/session-monitor.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-appearance.css') }}">
 </head>
-<body data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
+<body data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}" data-transfer-limits="{{ transfer_limits|default({})|tojson|forceescape }}" data-ssh-input-limits="{{ ssh_input_limits|default({})|tojson|forceescape }}" data-flashed-messages="{{ get_flashed_messages(with_categories=true)|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
 
     <header class="header">
@@ -44,23 +45,23 @@
             <div class="header-buttons" id="headerButtons">
                 <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation" data-i18n-aria-label="navigation.primary">
                     <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
-                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
+                    <button id="fileTransferBtn" class="global-nav-item" type="button" aria-label="File Manager" data-i18n-aria-label="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
                     <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts" aria-label="Hosts" data-i18n-aria-label="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button id="commandLibraryBtn" class="global-nav-item" type="button" aria-label="Commands" data-i18n-aria-label="commands.workspace"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
                 </nav>
 
                 <div class="mobile-more-actions" aria-label="Session actions" data-i18n-aria-label="workspace.sessionActions">
                     <button class="mobile-more-action" type="button" data-open-terminal-appearance><span class="material-icons" aria-hidden="true">palette</span><span data-i18n="terminalAppearance.title">Terminal appearance</span></button>
-                    <button id="mobileQuickConnectAction" class="mobile-more-action" type="button" onclick="window.openDefaultConnectionModal?.(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
-                    <button id="mobileToolsAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.workspaceLayoutController?.setNotesOpen(true, 'user'); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">edit_note</span><span data-i18n="workspaceContext.notes">Notes</span></button>
-                    <button id="mobileBroadcastAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.BroadcastInput?.toggle(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">cell_tower</span><span data-i18n="broadcast.toggle">Broadcast to all open sessions</span></button>
-                    <button id="mobileTranscriptAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); document.getElementById('saveTranscriptBtn').click(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">save</span><span data-i18n="terminal.saveTranscript">Save Transcript</span></button>
+                    <button id="mobileQuickConnectAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
+                    <button id="mobileToolsAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">edit_note</span><span data-i18n="workspaceContext.notes">Notes</span></button>
+                    <button id="mobileBroadcastAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">cell_tower</span><span data-i18n="broadcast.toggle">Broadcast to all open sessions</span></button>
+                    <button id="mobileTranscriptAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">save</span><span data-i18n="terminal.saveTranscript">Save Transcript</span></button>
                 </div>
 
                 <span class="header-divider" aria-hidden="true"></span>
 
                 <div class="account-selector">
-                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
+                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
                         <span class="account-avatar material-icons" aria-hidden="true">person</span>
                         <span class="account-name">{{ current_user.username }}</span>
                         <span class="account-caret material-icons" aria-hidden="true">expand_more</span>
@@ -197,6 +198,10 @@
                             <span class="material-icons" aria-hidden="true">monitor_heart</span>
                             <span data-i18n="workspaceContext.diagnostics">Diagnostics</span>
                         </button>
+                        <button class="context-workspace-tab" id="contextMonitorTab" type="button" role="tab" data-workspace-context="monitor" aria-selected="false" aria-controls="contextMonitorPanel" disabled>
+                            <span class="material-icons" aria-hidden="true">speed</span>
+                            <span data-i18n="workspaceContext.monitor">Monitor</span>
+                        </button>
                         <button class="context-workspace-tab" id="contextNotesTab" type="button" role="tab" data-workspace-context="notes" aria-selected="false" aria-controls="contextNotesPanel">
                             <span class="material-icons" aria-hidden="true">edit_note</span>
                             <span data-i18n="workspaceContext.notes">Notes</span>
@@ -226,6 +231,8 @@
                     </section>
 
                     <section class="context-workspace-panel" id="contextDiagnosticsPanel" role="tabpanel" aria-labelledby="contextDiagnosticsTab" aria-hidden="true" hidden></section>
+
+                    <section class="context-workspace-panel" id="contextMonitorPanel" role="tabpanel" aria-labelledby="contextMonitorTab" aria-hidden="true" hidden></section>
 
                     <section class="context-workspace-panel" id="contextNotesPanel" role="tabpanel" aria-labelledby="contextNotesTab" aria-hidden="true" hidden>
                         <div class="notepad-panel" id="notepadPanel" aria-labelledby="notepadTitle">
@@ -475,6 +482,23 @@
                 <div class="ssh-auth-banner-actions">
                     <button type="button" class="btn btn-secondary" id="sshAuthBannerCancel" data-i18n="connection.authBannerCancel">Cancel connection</button>
                     <button type="button" class="btn btn-primary" id="sshAuthBannerContinue" data-i18n="connection.authBannerContinue">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-small ssh-auth-banner-modal" id="sshHostKeyModal" role="alertdialog" aria-modal="true" aria-labelledby="sshHostKeyTitle" aria-describedby="sshHostKeyHint" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="sshHostKeyTitle" data-i18n="connection.hostKeyTitle">New SSH Host Key</h2>
+            </div>
+            <div class="modal-body ssh-auth-banner-body">
+                <p id="sshHostKeyHint" data-i18n="connection.hostKeyHint">The server presented a host key WebSSH has not seen before. Verify the fingerprint through a trusted channel before trusting it.</p>
+                <p class="ssh-auth-banner-target" id="sshHostKeyTarget"></p>
+                <pre class="ssh-auth-banner-text" id="sshHostKeyFingerprint" tabindex="0"></pre>
+                <div class="ssh-auth-banner-actions">
+                    <button type="button" class="btn btn-secondary" id="sshHostKeyReject" data-i18n="connection.hostKeyReject">Cancel connection</button>
+                    <button type="button" class="btn btn-primary" id="sshHostKeyAccept" data-i18n="connection.hostKeyAccept">Trust and connect</button>
                 </div>
             </div>
         </div>
@@ -1319,7 +1343,7 @@
                             <input type="text" class="form-control" id="smbSourceUsername" maxlength="256" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="user or user@example.com" data-i18n-placeholder="smb.usernamePlaceholder" required>
                             <small class="smb-inline-help">
                                 <span data-i18n="smb.usernameHint">Use alice@example.com or a DNS domain with username alice.</span>
-                                <a href="https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers" target="_blank" rel="noopener noreferrer" data-i18n="smb.signInHelp">SMB sign-in help</a>
+                                <a href="https://github.com/zhengwuji/web-ssh/wiki/SFTP-File-Workspace-and-Transfers" target="_blank" rel="noopener noreferrer" data-i18n="smb.signInHelp">SMB sign-in help</a>
                             </small>
                         </div>
                     </div>
@@ -1422,16 +1446,14 @@
     <script src="{{ static_asset_url(filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ static_asset_url(filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script>
-        window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
-        window.WEBSSH_SSH_INPUT_LIMITS = Object.freeze({{ ssh_input_limits | tojson }});
-    </script>
+    <script src="{{ static_asset_url(filename='js/page-context.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/socket-protocol.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-error-ui.js') }}"></script>
 
     <script src="{{ static_asset_url(filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-insights.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/session-monitor.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-runtime-inventory.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-diagnostics-charts.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-diagnostics.js') }}"></script>
@@ -1476,126 +1498,6 @@
     <script src="{{ static_asset_url(filename='js/ssh-gateway-dialog.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
-    <script>
-        const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
-        flashedMessages.forEach(([category, message]) => {
-            if (!window.showNotification) {
-                return;
-            }
-            const type = category === 'error' ? 'error' : (category === 'success' ? 'success' : 'info');
-            showNotification(message, type);
-        });
-    </script>
-
-    <script>
-        function initThemeSelectorHeader() {
-            const themes = [
-                { id: 'glass', name: 'Glass Ops', color: '#58a6ff' },
-                { id: 'retro', name: 'Retro Future', color: '#ffb454' },
-                { id: 'solar', name: 'Solar Drift', color: '#6ea8ff' },
-                { id: 'paper', name: 'Paper Ops', color: '#c77d48', light: true },
-                { id: 'noir', name: 'Noir Terminal', color: '#7f91ff' },
-                { id: 'arctic-ice', name: 'Arctic Ice', color: '#06b6d4' },
-                { id: 'rose-gold', name: 'Rose Gold', color: '#f43f5e' },
-                { id: 'cyberpunk-neon', name: 'Cyberpunk Neon', color: '#d946ef' },
-                { id: 'emerald-matrix', name: 'Emerald Matrix', color: '#10b981' },
-                { id: 'obsidian', name: 'Obsidian', color: '#ffffff' }
-            ];
-            const currentTheme = document.body.getAttribute('data-theme') || 'glass';
-            window.ThemePreference?.store(currentTheme);
-            const select = document.getElementById('settingsThemeSelect');
-
-            if (select) {
-                select.value = currentTheme;
-                select.addEventListener('change', () => {
-                    applyTheme(select.value);
-                });
-            }
-        }
-
-        function applyTheme(themeId) {
-            if (!window.ThemePreference?.isValid(themeId)) {
-                return;
-            }
-            document.body.setAttribute('data-theme', themeId);
-            window.ThemePreference.store(themeId);
-            if (window.socket) {
-                window.socket.emit('set_theme', { theme: themeId });
-            }
-            const select = document.getElementById('settingsThemeSelect');
-            if (select) select.value = themeId;
-            if (window.TerminalManager && typeof TerminalManager.applyThemeToAll === 'function') {
-                TerminalManager.applyThemeToAll();
-            }
-        }
-
-        function initLanguageSelectorHeader() {
-            const select = document.getElementById('settingsLanguageSelect');
-            const languages = i18n.getLanguages();
-            const currentLang = i18n.getLanguage();
-
-            if (!select) return;
-            select.replaceChildren();
-            languages.forEach(lang => {
-                const option = document.createElement('option');
-                option.value = lang.code;
-                option.textContent = `${lang.flag} ${lang.name}`;
-                select.appendChild(option);
-            });
-            select.value = currentLang;
-            select.addEventListener('change', () => {
-                i18n.setLanguage(select.value);
-            });
-        }
-
-        function closeAccountDropdownHeader() {
-            document.getElementById('accountDropdownHeader')?.classList.remove('show');
-            document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'false');
-        }
-
-        function toggleAccountDropdownHeader(event) {
-            if (event) {
-                event.stopPropagation();
-            }
-            const dropdown = document.getElementById('accountDropdownHeader');
-            if (!dropdown) {
-                return;
-            }
-            if (dropdown.classList.contains('show')) {
-                closeAccountDropdownHeader();
-                return;
-            }
-            dropdown.classList.add('show');
-            document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'true');
-        }
-
-        document.getElementById('accountDropdownHeader')?.addEventListener('click', (e) => {
-            if (e.target.closest('.account-action')) {
-                closeAccountDropdownHeader();
-            }
-        });
-
-        window.addEventListener('click', (e) => {
-            if (!e.target.closest('.account-selector')) {
-                closeAccountDropdownHeader();
-            }
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initThemeSelectorHeader();
-            initLanguageSelectorHeader();
-            window.webssh2Shell = window.WebSSH2Shell?.init({
-                sessionManager: SessionManager,
-                document,
-            });
-            window.accountWorkspacePulse = window.AccountWorkspacePulseModule?.createAccountWorkspacePulse({
-                sessionManager: SessionManager,
-                document,
-                window,
-                translate: key => window.i18n ? i18n.t(key) : key,
-            });
-            window.accountWorkspacePulse?.init();
-        });
-    </script>
+    <script src="{{ static_asset_url(filename='js/header-workspace.js') }}"></script>
 </body>
 </html>

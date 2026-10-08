@@ -36,7 +36,10 @@ def _login(client, username="passkey_user"):
     assert response.status_code == 302
 
 
-def test_webauthn_routes_are_hidden_when_disabled(app, client):
+def test_webauthn_routes_are_hidden_when_disabled(app, client, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", False)
     _create_user(app)
     _login(client)
 
@@ -232,8 +235,10 @@ def test_registration_options_require_account_grant_and_exact_rp(
     _login(client)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
 
     rejected = client.post(
         "/api/webauthn/register/options",
@@ -292,6 +297,7 @@ def test_ldap_user_can_request_passkey_registration_options(
     monkeypatch.setattr(config, "LDAP_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
     monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: True)
 
@@ -363,6 +369,7 @@ def test_authentication_options_are_username_less(
         db.session.commit()
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
 
     known = client.post(
         "/api/webauthn/auth/options",
@@ -401,6 +408,7 @@ def test_webauthn_login_rate_limit_can_be_disabled(
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "RATELIMIT_ENABLED", False)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "check_rate_limit",
@@ -435,6 +443,7 @@ def test_existing_credentials_have_a_password_authenticated_upgrade_path(
     _login(client)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
 
     headers, _verified = account_password_step_up_headers(
@@ -469,8 +478,10 @@ def test_parallel_passkey_enrollments_keep_independent_challenges(
     _login(client, "parallel_passkey_enroll")
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "verify_registration_response",
@@ -533,7 +544,9 @@ def test_webauthn_registration_commit_failure_is_not_a_duplicate(
     _login(client)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "consume_challenge",
@@ -592,7 +605,9 @@ def test_registration_verify_rechecks_passkey_limit_before_storage(
     _login(client)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "consume_challenge",
@@ -640,8 +655,10 @@ def test_verified_passkey_replacement_releases_recovery_session(
         db.session.commit()
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     assert client.post(
         "/login",
         data={"username": "passkey_recovery_user", "password": "password123"},
@@ -701,7 +718,9 @@ def test_authentication_resolves_account_from_discoverable_credential(
         db.session.commit()
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "verify_authentication_response",
@@ -772,7 +791,9 @@ def test_ldap_user_can_sign_in_directly_with_owned_passkey(
     monkeypatch.setattr(config, "LDAP_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "verify_authentication_response",
@@ -820,7 +841,9 @@ def test_passkey_completes_pending_password_mfa(app, client, monkeypatch):
         db.session.commit()
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "verify_authentication_response",
@@ -894,7 +917,9 @@ def test_passkey_mfa_rejects_a_different_accounts_credential(
         db.session.commit()
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
     monkeypatch.setattr(
         webauthn_routes,
         "verify_authentication_response",
@@ -1150,7 +1175,9 @@ def test_rejected_webauthn_ceremonies_are_security_audited(
     _login(client)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID_EXPLICIT", True)
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN_EXPLICIT", True)
 
     with caplog.at_level(logging.WARNING, logger="security_audit"):
         registration = client.post(

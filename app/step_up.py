@@ -33,6 +33,7 @@ _MAX_GRANTS_PER_SESSION = 32
 _MAX_ACCOUNT_INTENTS_PER_SESSION = 8
 _ACTION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,95}$")
 _METHOD_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
+_TARGET_HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _MAX_TARGET_BYTES = 1024
 _TARGET_DOMAIN = b"webssh-step-up-target-v1\x00"
 _grant_lock = Lock()
@@ -348,7 +349,7 @@ def create_step_up_grant_for_hash(
     if not isinstance(auth_session, AuthenticationSession):
         raise StepUpError("step-up authorization is invalid")
     action = normalize_action(action)
-    if not re.fullmatch(r"[0-9a-f]{64}", str(target_hash or "")):
+    if not _TARGET_HASH_PATTERN.fullmatch(str(target_hash or "")):
         raise StepUpError("step-up authorization is invalid")
     try:
         assurance = AssuranceLevel(assurance)

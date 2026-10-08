@@ -135,7 +135,7 @@ def test_ranges_and_non_text_assets_are_not_compressed(client):
         },
     )
     image = client.get(
-        _asset_url(client, 'images/theme-backgrounds/carbon-glass.png'),
+        _asset_url(client, 'images/theme-backgrounds/carbon-glass.webp'),
         headers={'Accept-Encoding': 'br, gzip'},
     )
 

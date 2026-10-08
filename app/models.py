@@ -6,6 +6,31 @@ import bcrypt
 db = SQLAlchemy()
 
 
+def install_sqlite_pragmas(app):
+    """Enable WAL journalling and a busy timeout on every SQLite connection.
+
+    WAL lets readers proceed while a writer commits (the gthread pool serves
+    many concurrent sockets against one database file), and busy_timeout
+    turns a lock collision into a short wait instead of an immediate
+    'database is locked' error. Non-SQLite engines are unaffected.
+    """
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    @event.listens_for(Engine, 'connect')
+    def _set_sqlite_pragma(dbapi_connection, _connection_record):
+        module = type(dbapi_connection).__module__
+        if 'sqlite3' not in module and 'pysqlite' not in module:
+            return
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute('PRAGMA journal_mode=WAL')
+            cursor.execute('PRAGMA busy_timeout=5000')
+            cursor.execute('PRAGMA synchronous=NORMAL')
+        finally:
+            cursor.close()
+
+
 def as_naive_utc(value):
     """Normalize a datetime for database columns that store naive UTC."""
     if value.tzinfo is None:

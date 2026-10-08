@@ -810,7 +810,8 @@ def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
     return total, has_symlink
 
 
-def _create_private_temporary_archive(temp_dir):
+def create_private_temporary_archive(temp_dir):
+    """Create a 0600 .zip file path inside ``temp_dir`` (shared helper)."""
     temporary = tempfile.NamedTemporaryFile(
         suffix='.zip', delete=False, dir=temp_dir
     )
@@ -843,7 +844,7 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
         temp_dir = Path(temp_dir)
         temp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(temp_dir, 0o700)
-    archive_path = _create_private_temporary_archive(temp_dir)
+    archive_path = create_private_temporary_archive(temp_dir)
 
     def add_directory(archive, remote_path, archive_prefix, depth=0):
         nonlocal transferred
@@ -922,6 +923,22 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
             pass
         raise
 
+def _sftp_channel_likely_alive(sftp):
+    """Return True unless the cached SFTP channel is provably dead.
+
+    This is a local check (no network round trip): a closed channel object or
+    an inactive SSH transport means the client must be discarded. A wedged
+    SFTP subsystem over a live transport is not detectable locally; that
+    failure surfaces on the next operation and the cache is invalidated there.
+    """
+    sock = getattr(sftp, 'sock', None)
+    if sock is None or getattr(sock, 'closed', False):
+        return False
+    get_transport = getattr(sock, 'get_transport', None)
+    transport = get_transport() if callable(get_transport) else None
+    return transport is not None and transport.is_active()
+
+
 def get_sftp_client(session_id):
     """Get cached or create new SFTP client from existing SSH session.
 
@@ -936,17 +953,15 @@ def get_sftp_client(session_id):
                 cached_sftp = _sftp_cache[session_id]
 
         if cached_sftp is not None:
-            try:
-                cached_sftp.stat('.')
+            if _sftp_channel_likely_alive(cached_sftp):
                 return cached_sftp, None
+            with _sftp_cache_lock:
+                if _sftp_cache.get(session_id) is cached_sftp:
+                    del _sftp_cache[session_id]
+            try:
+                cached_sftp.close()
             except Exception:
-                with _sftp_cache_lock:
-                    if _sftp_cache.get(session_id) is cached_sftp:
-                        del _sftp_cache[session_id]
-                try:
-                    cached_sftp.close()
-                except Exception:
-                    pass
+                pass
 
         with ssh_manager.sessions_lock:
             if session_id not in ssh_manager.sessions:

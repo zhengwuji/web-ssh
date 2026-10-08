@@ -8,7 +8,12 @@ def container_smoke_workflow():
 
 
 def test_native_runtime_keeps_the_reviewed_gunicorn_and_worker_contract():
-    """More workers would split process-local SSH and quota state."""
+    """More workers would split process-local SSH and quota state.
+
+    The optional ${GUNICORN_TLS_ARGS:-} expansion is the only approved
+    addition: entrypoint.sh leaves it empty unless WEBSSH_TLS_MODE is
+    enabled, so the plain-HTTP command is unchanged.
+    """
     requirements = Path("requirements.in").read_text(encoding="utf-8").splitlines()
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8").splitlines()
 
@@ -21,7 +26,7 @@ def test_native_runtime_keeps_the_reviewed_gunicorn_and_worker_contract():
     assert command == [
         "sh",
         "-c",
-        "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" --bind 0.0.0.0:5000 start:app",
+        "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" ${GUNICORN_TLS_ARGS:-} --bind 0.0.0.0:5000 start:app",
     ]
 
 

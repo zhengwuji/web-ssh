@@ -47,6 +47,7 @@ SECURITY_ENV_NAMES = {
     'TAILSCALE_SSH_INTERFACE',
     'TOTP_ENABLED',
     'TRUSTED_PROXIES',
+    'TRUSTED_PROXY_CIDRS',
     'WEBAUTHN_ENABLED',
     'WEBAUTHN_ORIGIN',
     'WEBAUTHN_RP_ID',
@@ -69,6 +70,7 @@ def _production_env(**overrides):
         'BLOCK_INTERNAL_SSH': 'true',
         'BOOTSTRAP_REGISTRATION_ENABLED': 'false',
         'TRUSTED_PROXIES': '1',
+        'TRUSTED_PROXY_CIDRS': '10.0.0.0/8',
         'PYTHONIOENCODING': 'utf-8',
     })
     for name, value in overrides.items():
@@ -80,6 +82,10 @@ def _production_env(**overrides):
 
 
 def _load_config(env, code='import config'):
+    # Security validation is lazy at runtime (attribute access on config);
+    # tests rely on unsafe profiles failing here, so force the evaluation.
+    if 'SECURITY_CONFIG_WARNINGS' not in code:
+        code = f'{code}; config.SECURITY_CONFIG_WARNINGS'
     return subprocess.run(
         [sys.executable, '-c', code],
         cwd=os.getcwd(),

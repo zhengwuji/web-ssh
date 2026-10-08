@@ -19,7 +19,7 @@ and a healthcheck.
 Linux or macOS:
 
 ```bash
-git clone https://github.com/bifrost0x/webssh.git
+git clone https://github.com/zhengwuji/web-ssh.git
 cd webssh
 python3 -m venv venv
 source venv/bin/activate
@@ -30,7 +30,7 @@ python -m pip install --require-hashes -r requirements.txt
 PowerShell:
 
 ```powershell
-git clone https://github.com/bifrost0x/webssh.git
+git clone https://github.com/zhengwuji/web-ssh.git
 Set-Location webssh
 python -m venv venv
 .\venv\Scripts\Activate.ps1

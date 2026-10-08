@@ -12,6 +12,9 @@ services:
       BOOTSTRAP_REGISTRATION_ENABLED: "false"
       BLOCK_INTERNAL_SSH: "true"
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}
+      # X-Forwarded-* is honored only for these proxy peers (required by the
+      # production profile when TRUSTED_PROXIES > 0).
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.0/8,::1/128}
       TOTP_ENABLED: "${TOTP_ENABLED:-true}"
       OIDC_MFA_AMR_VALUES: "${OIDC_MFA_AMR_VALUES:-}"
       OIDC_MFA_ACR_VALUES: "${OIDC_MFA_ACR_VALUES:-}"

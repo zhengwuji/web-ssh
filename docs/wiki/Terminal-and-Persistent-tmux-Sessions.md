@@ -131,7 +131,7 @@ monitoring or privilege-escalation agent.
 
 ## Browser refresh and reconnect
 
-![WebSSH realtime SSH session and bulk transfer paths with ownership and transport boundaries](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/session-and-transfer-lifecycle.png?raw=true)
+![WebSSH realtime SSH session and bulk transfer paths with ownership and transport boundaries](https://github.com/zhengwuji/web-ssh/blob/main/docs/media/diagrams/session-and-transfer-lifecycle.png?raw=true)
 
 Terminal control and output use authenticated Socket.IO events around an owned,
 process-local SSH session. Bulk transfer bodies take the separate bounded HTTP

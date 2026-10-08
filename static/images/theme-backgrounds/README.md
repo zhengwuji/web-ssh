@@ -1,6 +1,7 @@
 # Theme background assets
 
-The PNG files are the original sources. Pages use the smaller WebP derivatives
+The PNG originals live outside the served tree in assets/theme-backgrounds/;
+the served directory keeps only the smaller WebP derivatives
 at the same 1672 x 941 resolution. Keep the originals for future regeneration.
 
 Encode with Pillow using `format='WEBP', quality=90, method=6` (quality 89 for

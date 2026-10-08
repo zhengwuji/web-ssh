@@ -8,7 +8,7 @@ release grouping, issues for outcomes, and PRs for implementation evidence.
 | Surface | Question it answers | What to record |
 |---|---|---|
 | [Roadmap](../ROADMAP.md) | Where are we going and why? | Current release focus, next candidates and explicit non-commitments |
-| [Milestone](https://github.com/bifrost0x/webssh/milestones) | Which release should deliver this? | Version, goal, acceptance, blockers and release link |
+| [Milestone](https://github.com/zhengwuji/web-ssh/milestones) | Which release should deliver this? | Version, goal, acceptance, blockers and release link |
 | Issue | Which problem/outcome needs work? | Benefit, reason for priority, acceptance criteria, dependencies and scope limits |
 | Pull request | How was it implemented and verified? | Linked issue, implementation choices, tests, compatibility/security impact and rollout gaps |
 | Release-readiness issue | Is the integrated work actually deliverable? | Exact candidate SHA, evidence, canary/upgrade results, publication and image verification |
@@ -46,16 +46,16 @@ interpret their combined count as distinct features delivered.
 
 ## Example: optional Warpgate support
 
-[#237](https://github.com/bifrost0x/webssh/issues/237) states the user's gateway need.
-[#238](https://github.com/bifrost0x/webssh/pull/238) implements selector usernames,
+[#237](https://github.com/zhengwuji/web-ssh/issues/237) states the user's gateway need.
+[#238](https://github.com/zhengwuji/web-ssh/pull/238) implements selector usernames,
 interactive authentication and a default-off administration gate. The request is closed
 and the PR merged, but neither belongs to v2.4.0 because the tag predates their merge.
 
-The published [v2.5.0 release](https://github.com/bifrost0x/webssh/releases/tag/v2.5.0) includes that implementation and the
-related workspace fixes. [#248](https://github.com/bifrost0x/webssh/issues/248) records
+The published [v2.5.0 release](https://github.com/zhengwuji/web-ssh/releases/tag/v2.5.0) includes that implementation and the
+related workspace fixes. [#248](https://github.com/zhengwuji/web-ssh/issues/248) records
 the exact candidate, publication and image verification. The maintainer authorized
 publication with the reported deployment acceptance still unverified; those checks
-remain open in [#254](https://github.com/bifrost0x/webssh/issues/254). Publication and operational acceptance are
+remain open in [#254](https://github.com/zhengwuji/web-ssh/issues/254). Publication and operational acceptance are
 recorded separately, without repeating implementation PRs or marking unrun checks passed.
 
 ## Record decisions and blockers
@@ -77,7 +77,7 @@ process in [SECURITY.md](../SECURITY.md), not a new public planning issue.
 
 ## Release gate checklist
 
-Use the focused [v2.5.0 readiness checklist](https://github.com/bifrost0x/webssh/issues/248)
+Use the focused [v2.5.0 readiness checklist](https://github.com/zhengwuji/web-ssh/issues/248)
 as the first example. Future checklists should include:
 
 - Confirmed scope/version and explicitly deferred items.
@@ -100,7 +100,7 @@ The original backfill result is retained in the manifest. Later releases extend 
 history; `candidate` is null when no next version has been selected.
 
 Applied on **2026-10-04**: ten historical milestones are closed and the proposed
-[v2.5.0 milestone](https://github.com/bifrost0x/webssh/milestone/11) was open at that time.
+[v2.5.0 milestone](https://github.com/zhengwuji/web-ssh/milestone/11) was open at that time.
 The backfill assigned and verified 160 PRs, 24 implementation-linked issues and the
 open release gate #248 (185 items). PR #98 returned HTTP 404 through the API and
 signed-in browser and could not be assigned. The original 161-PR reconstruction

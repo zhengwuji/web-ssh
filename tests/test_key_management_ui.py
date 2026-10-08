@@ -6,6 +6,19 @@ PROFILE_MANAGER = Path('static/js/profile-manager.js').read_text(encoding='utf-8
 APP = Path('static/js/app.js').read_text(encoding='utf-8')
 STYLE = Path('static/css/style.css').read_text(encoding='utf-8')
 I18N = Path('static/js/i18n.js').read_text(encoding='utf-8')
+# English ships inline in i18n.js; every other locale is a lazily fetched
+# static/js/i18n/<lang>.json bundle, so a key must appear once per locale.
+I18N_BUNDLES = tuple(
+    path.read_text(encoding='utf-8')
+    for path in sorted(Path('static/js/i18n').glob('*.json'))
+)
+I18N_LOCALE_COUNT = 1 + len(I18N_BUNDLES)
+
+
+def _translated_locale_count(key):
+    return (I18N + ''.join(I18N_BUNDLES)).count(f'"{key}":') + I18N.count(
+        f"'{key}':"
+    )
 
 
 def test_profile_editor_contains_accessible_inline_key_uploader():
@@ -93,9 +106,10 @@ def test_key_replacement_ui_is_accessible_warns_and_keeps_secrets_out_of_markup(
         assert fragment in PROFILE_MANAGER
     assert 'replacementEditor.innerHTML' not in PROFILE_MANAGER
     assert "'keys.replaceWarning'" in PROFILE_MANAGER
-    assert I18N.count("'keys.replaceWarning':") == 6
-    assert I18N.count("'keys.replaceConfirm':") == 6
-    assert I18N.count("'keys.replaceFailed':") == 6
+    assert I18N_LOCALE_COUNT == 6
+    assert _translated_locale_count('keys.replaceWarning') == I18N_LOCALE_COUNT
+    assert _translated_locale_count('keys.replaceConfirm') == I18N_LOCALE_COUNT
+    assert _translated_locale_count('keys.replaceFailed') == I18N_LOCALE_COUNT
 
 
 def test_key_replacement_event_updates_ui():

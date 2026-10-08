@@ -46,6 +46,17 @@
             };
         }
         const safeMessage = String(data?.error || 'Connection failed');
+        if (data?.code === 'host_key_unconfirmed') {
+            return {
+                message: translated(
+                    translate,
+                    'sshErrors.hostKeyUnconfirmed',
+                    'The SSH host key was not confirmed, so the connection was cancelled.',
+                ),
+                type: 'error',
+                duration: undefined,
+            };
+        }
         return {
             message: translated(
                 translate,

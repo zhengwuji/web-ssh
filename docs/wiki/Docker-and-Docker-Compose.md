@@ -1,6 +1,6 @@
 # Docker and Docker Compose
 
-The official image is published at `ghcr.io/bifrost0x/webssh`. The container
+The official image is published at `ghcr.io/zhengwuji/web-ssh`. The container
 runs as a non-root user and starts Gunicorn with one `gthread` worker.
 
 ## Persistent volume
@@ -10,7 +10,7 @@ Mount `/app/data` persistently:
 ```yaml
 services:
   webssh:
-    image: ghcr.io/bifrost0x/webssh:latest
+    image: ghcr.io/zhengwuji/web-ssh:latest
     volumes:
       - webssh_data:/app/data
 
@@ -28,7 +28,7 @@ be nested below or shared with `/app/data`.
 ## Base homelab deployment
 
 ```bash
-curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/zhengwuji/web-ssh/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -110,7 +110,7 @@ Record the currently deployed immutable image digest before replacing it:
 
 ```bash
 docker image inspect \
-  ghcr.io/bifrost0x/webssh:latest \
+  ghcr.io/zhengwuji/web-ssh:latest \
   --format '{{index .RepoDigests 0}}'
 ```
 
@@ -164,7 +164,7 @@ the production overlay follows it so its security settings are authoritative.
 Optionally append `-f docker-compose.hardened.yml` after production to enable
 additional container restrictions. Check custom writable paths, runtime UID/GID
 and resource budgets before opting in; see
-[container boundaries](https://github.com/bifrost0x/webssh/blob/main/docs/production-container.md).
+[container boundaries](https://github.com/zhengwuji/web-ssh/blob/main/docs/production-container.md).
 
 ## Inspect the effective configuration
 
