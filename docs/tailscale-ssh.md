@@ -1,32 +1,30 @@
-# Tailscale SSH deployment and security
+# Tailscale SSH 部署与安全
 
-WebSSH can authenticate to a target with the Tailscale identity of the machine
-or container running WebSSH. The browser user does not provide a password or a
-private SSH key. The target must have Tailscale SSH enabled with
-`tailscale set --ssh`, and the tailnet policy must authorize the WebSSH node.
+WebSSH 可以使用运行 WebSSH 的机器或容器的 Tailscale 身份向目标进行认证。浏览器
+用户无需提供密码或私有 SSH 密钥。目标上必须通过 `tailscale set --ssh` 启用
+Tailscale SSH，并且 tailnet 策略必须授权该 WebSSH 节点。
 
-## Shared identity security model
+## 共享身份安全模型
 
-Tailscale sees the WebSSH node, not the individual WebSSH account that clicked
-Connect. Therefore every WebSSH user authorized for this feature shares the
-same tailnet identity and all permissions assigned to that node or tag.
+Tailscale 看到的是 WebSSH 节点，而不是点击连接的那个具体的 WebSSH 账号。因此，
+所有被授权使用此功能的 WebSSH 用户共享同一个 tailnet 身份，以及分配给该节点或
+标签的全部权限。
 
-Use this mode only in a trusted homelab or similarly controlled environment:
+请仅在受信任的家庭实验室（homelab）或类似受控环境中使用此模式：
 
-1. Give WebSSH a dedicated tag such as `tag:webssh`.
-2. Limit that tag to TCP port 22 on only the required target tag or hosts.
-3. Limit Tailscale SSH rules to the required remote OS usernames.
-4. Keep WebSSH registration disabled or tightly controlled.
-5. Configure WebSSH's mandatory target and optional remote-username allowlists as a
-   second boundary. Tailnet ACL and SSH policy remain authoritative.
+1. 为 WebSSH 分配一个专用标签，例如 `tag:webssh`。
+2. 将该标签限制为仅能访问所需目标标签或主机上的 TCP 22 端口。
+3. 将 Tailscale SSH 规则限制为所需的远程操作系统用户名。
+4. 保持 WebSSH 注册处于禁用或严格受控的状态。
+5. 将 WebSSH 强制的目标允许列表以及可选的远程用户名允许列表配置为第二道边界。
+   tailnet ACL 与 SSH 策略仍然是权威依据。
 
-Every authorized or denied Tailscale SSH attempt is written to the security
-audit log with the WebSSH username, target, remote username, client IP, and the
-`shared-node` identity marker.
+每一次被授权或被拒绝的 Tailscale SSH 尝试都会写入安全审计日志，其中包含 WebSSH
+用户名、目标、远程用户名、客户端 IP 以及 `shared-node` 身份标记。
 
-## WebSSH configuration
+## WebSSH 配置
 
-Tailscale SSH is off by default. Enable it explicitly:
+Tailscale SSH 默认关闭。请显式启用它：
 
 ```env
 TAILSCALE_SSH_ENABLED=true
@@ -36,30 +34,25 @@ TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
 TAILSCALE_SSH_INTERFACE=tailscale0
 ```
 
-Administrators are allowed when the feature is enabled. The
-`TAILSCALE_SSH_ALLOWED_WEBSSH_USERS` list grants access to additional WebSSH
-usernames. The target allowlist is mandatory whenever the feature is enabled.
-A bare hostname, IPv4 address, or IPv6 address means port 22. Use
-`hostname:port`, `IPv4:port`, or `[IPv6]:port` for another port. Target matching
-is exact and case-insensitive, while remote OS usernames are exact and
-case-sensitive. A production deployment refuses to start when the enabled
-feature has an empty or malformed target list or an empty interface. The
-homelab profile emits security warnings, ignores individual malformed entries
-so valid siblings still work, and fails every connection closed if no valid
-target or interface remains. Values stay dormant while the feature is disabled.
-After DNS resolution, WebSSH accepts only an
-address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
-`tailscale0`), pins that address, and binds the connecting socket to the same
-interface. A route change cannot silently move the connection to another
-interface.
+当该功能启用时，管理员始终被允许访问。`TAILSCALE_SSH_ALLOWED_WEBSSH_USERS`
+列表用于向额外的 WebSSH 用户名授予访问权限。只要该功能被启用，目标允许列表就是
+强制的。单独的主机名、IPv4 地址或 IPv6 地址均表示端口 22。如需使用其他端口，请
+使用 `hostname:port`、`IPv4:port` 或 `[IPv6]:port`。目标匹配是精确且大小写不敏感
+的，而远程操作系统用户名则是精确且大小写敏感的。在生产部署中，如果已启用的功能
+其目标列表为空或格式错误，或者接口为空，则会拒绝启动。家庭实验室配置文件会发出
+安全警告，忽略个别格式错误的条目以便有效的同类条目仍然可用，并且在没有任何有效
+目标或接口时关闭所有连接。当该功能被禁用时，这些值保持休眠状态。在 DNS 解析之后，
+WebSSH 只接受内核路由使用 `TAILSCALE_SSH_INTERFACE`（默认 `tailscale0`）的地址，
+锁定该地址，并将连接的套接字绑定到同一接口。路由变化无法悄悄地把连接转移到其他
+接口。
 
-Tailscale authentication cannot be combined with ProxyJump. The route and
-interface proof applies only to a direct connection from the WebSSH host.
+Tailscale 认证不能与 ProxyJump 组合使用。路由与接口证明仅适用于来自 WebSSH 主机
+的直接连接。
 
-## Example tailnet policy
+## tailnet 策略示例
 
-Adapt tags, targets, and users to the deployment. This intentionally grants the
-WebSSH tag only SSH access to tagged servers:
+请根据实际部署调整标签、目标与用户。该示例有意只向 WebSSH 标签授予对带标签服务器
+的 SSH 访问权限：
 
 ```json
 {
@@ -85,46 +78,41 @@ WebSSH tag only SSH access to tagged servers:
 }
 ```
 
-## Docker sidecar with persistent state
+## 带持久化状态的 Docker 边车（sidecar）
 
-The sidecar is a separate Tailscale container that shares its network namespace
-with WebSSH. Its `/var/lib/tailscale` volume preserves node registration across
-container updates and restarts. Publish the WebSSH port on the Tailscale service
-because `network_mode: service:tailscale` gives both containers one network
-namespace.
+该边车是一个独立的 Tailscale 容器，它与 WebSSH 共享网络命名空间。其
+`/var/lib/tailscale` 卷可在容器更新和重启之间保留节点注册信息。请将 WebSSH 端口
+发布在 Tailscale 服务上，因为 `network_mode: service:tailscale` 使两个容器共用
+同一个网络命名空间。
 
-### Safe first-time setup
+### 安全的首次设置
 
-Do not enable Tailscale SSH on a fresh, publicly reachable WebSSH database.
-Create the administrator explicitly on the Docker host before enabling the
-shared Tailscale identity.
+不要在全新的、可被公网访问的 WebSSH 数据库上启用 Tailscale SSH。在启用共享的
+Tailscale 身份之前，请先在 Docker 主机上显式创建管理员。
 
-Bootstrap the deployment in this order:
+请按以下顺序引导部署：
 
-1. Save and start the sidecar configuration below as-is on a trusted network.
-   It deliberately starts with `TAILSCALE_SSH_ENABLED=false`.
-2. Create the first administrator explicitly:
+1. 在受信任的网络上，按原样保存并启动下面的边车配置。它刻意以
+   `TAILSCALE_SSH_ENABLED=false` 启动。
+2. 显式创建第一个管理员：
    ```bash
    docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
    ```
-3. Keep production self-registration disabled unless it is explicitly needed.
-   Because the administrator was created first, every later account created
-   through public registration is non-administrative. On an otherwise empty
-   installation, the first registered account would become administrator.
-4. Configure narrow target and remote-user allowlists, then change
-   `TAILSCALE_SSH_ENABLED` to `true`.
-5. Apply the updated configuration with `docker compose up -d`.
+3. 除非确实需要，否则请保持生产环境的自助注册处于禁用状态。由于管理员已先被
+   创建，之后通过公开注册创建的每个账号都是非管理员的。在除此之外为空的安装
+   环境中，第一个注册的账号将会成为管理员。
+4. 配置范围较窄的目标与远程用户允许列表，然后将 `TAILSCALE_SSH_ENABLED` 改为
+   `true`。
+5. 使用 `docker compose up -d` 应用更新后的配置。
 
-Production self-registration is always disabled. In the homelab profile, a
-registration setting saved in the Admin Panel takes precedence over the
-environment default.
+生产环境的自助注册始终处于禁用状态。在家庭实验室配置文件中，保存在 Admin Panel
+中的注册设置优先于环境变量默认值。
 
-### Homelab Compose example
+### 家庭实验室 Compose 示例
 
-This example follows the repository's existing homelab defaults: it permits
-browser origins with `CORS_ORIGINS=*` and allows non-TLS HTTP cookies. Use it
-only on a trusted network. The production HTTPS replacements are documented
-immediately after the example.
+本示例遵循仓库现有的家庭实验室默认值：它允许任意浏览器源（`CORS_ORIGINS=*`）
+并允许非 TLS 的 HTTP Cookie。请仅在受信任的网络上使用它。生产环境的 HTTPS 替换
+配置紧接在该示例之后给出。
 
 ```yaml
 services:
@@ -181,33 +169,29 @@ volumes:
     driver: local
 ```
 
-After the administrator bootstrap and allowlist configuration, enable the
-feature by changing the value to `TAILSCALE_SSH_ENABLED=true`.
+完成管理员引导与允许列表配置之后，将取值改为 `TAILSCALE_SSH_ENABLED=true` 即可
+启用该功能。
 
-For an HTTPS deployment, replace the three homelab browser settings with the
-public origin and secure cookies:
+对于 HTTPS 部署，请将这三项家庭实验室浏览器设置替换为公开源与安全 Cookie：
 
 ```yaml
       - CORS_ORIGINS=https://ssh.example.com
       - SESSION_COOKIE_SECURE=true
 ```
 
-Remove `ALLOW_CORS_WILDCARD=true` when using a specific origin. If a reverse
-proxy on the Docker host terminates TLS, also bind the published port to
-loopback so clients cannot bypass HTTPS:
+使用具体源时，请移除 `ALLOW_CORS_WILDCARD=true`。如果 Docker 主机上的反向代理
+负责终止 TLS，还请将发布的端口绑定到回环地址，这样客户端就无法绕过 HTTPS：
 
 ```yaml
     ports:
       - "127.0.0.1:5000:5000"
 ```
 
-For a containerized reverse proxy, remove the `ports` block instead, attach the
-`tailscale` service and proxy to the same internal Docker network, and proxy to
-`tailscale:5000`. In both cases, configure `TRUSTED_PROXIES` as described in the
-main README. Do not list both the wildcard and the specific origin.
+对于容器化的反向代理，则应改为移除 `ports` 块，将 `tailscale` 服务与代理接入
+同一个内部 Docker 网络，并代理到 `tailscale:5000`。在这两种情况下，都请按照主
+README 中的说明配置 `TRUSTED_PROXIES`。不要同时列出通配符源和具体源。
 
-Supply `TS_AUTHKEY` at deployment time through an environment file or secret
-manager; do not commit it to Compose. Prefer a tagged, reusable or OAuth-issued
-credential with the minimum required tag permission. After the persisted node
-state exists, `TS_AUTH_ONCE=true` prevents unnecessary reauthentication on each
-restart.
+请在部署时通过环境文件或密钥管理器提供 `TS_AUTHKEY`；不要将其提交到 Compose
+中。建议使用带标签的、可重用的或由 OAuth 签发的凭据，并赋予其所需的最小标签
+权限。在持久化节点状态存在之后，`TS_AUTH_ONCE=true` 可避免每次重启时进行不必要
+的重新认证。

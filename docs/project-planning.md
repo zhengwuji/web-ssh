@@ -1,66 +1,65 @@
-# Planning and Release Workflow
+# 规划与发布工作流
 
-Keep planning small enough to maintain. Use the roadmap for direction, milestones for
-release grouping, issues for outcomes, and PRs for implementation evidence.
+让规划保持在易于维护的规模。使用路线图确定方向，用里程碑划分
+发布分组，用 issue 定义成果，用 PR 提供实现证据。
 
-## What belongs where
+## 什么内容该放在哪里
 
-| Surface | Question it answers | What to record |
+| 载体 | 它回答的问题 | 需要记录的内容 |
 |---|---|---|
-| [Roadmap](../ROADMAP.md) | Where are we going and why? | Current release focus, next candidates and explicit non-commitments |
-| [Milestone](https://github.com/zhengwuji/web-ssh/milestones) | Which release should deliver this? | Version, goal, acceptance, blockers and release link |
-| Issue | Which problem/outcome needs work? | Benefit, reason for priority, acceptance criteria, dependencies and scope limits |
-| Pull request | How was it implemented and verified? | Linked issue, implementation choices, tests, compatibility/security impact and rollout gaps |
-| Release-readiness issue | Is the integrated work actually deliverable? | Exact candidate SHA, evidence, canary/upgrade results, publication and image verification |
-| GitHub Release | What was actually shipped? | Published tag, user-facing changes, upgrade notes and delivery evidence |
+| [路线图](../ROADMAP.md) | 我们要去哪里，为什么？ | 当前发布重点、下一批候选和明确的非承诺事项 |
+| [里程碑](https://github.com/zhengwuji/web-ssh/milestones) | 应由哪个发布版本来交付？ | 版本、目标、验收标准、阻塞项和发布链接 |
+| Issue | 哪个问题/成果需要处理？ | 收益、优先级理由、验收标准、依赖关系和范围边界 |
+| Pull request | 它是如何实现和验证的？ | 关联的 issue、实现选择、测试、兼容性/安全影响和上线缺口 |
+| 发布就绪 issue | 集成后的工作是否真的可交付？ | 确切的候选 SHA、证据、金丝雀/升级结果、发布和镜像验证 |
+| GitHub Release | 实际交付了什么？ | 已发布的 tag、面向用户的变更、升级说明和交付证据 |
 
-Existing GitHub Projects can remain a work view. They do not need to duplicate release
-notes, and a board status must not be interpreted as proof of versioned publication.
-This setup does not add or reorganize a Project.
+现有的 GitHub Projects 可以继续作为工作视图。它们无需重复发布
+说明，看板状态也不得被解读为带版本发布版的证明。
+此设置不会新增或重组任何 Project。
 
-## A minimal working cycle
+## 一个最小可行的工作循环
 
-1. **Capture the reason.** For substantial work, use an issue or a reviewed proposal.
-   Write the user problem, expected benefit and acceptance before implementation.
-   Small bug/dependency PRs do not require a duplicate issue.
-2. **Select one active release scope.** Create a version milestone, such as `v2.5.0`,
-   with a short goal and a release-readiness issue. A proposed version is adjustable.
-   Do not set a due date unless the maintainer actually commits to it.
-3. **Assign accepted work.** Attach the implementation issue and related PR to that
-   milestone. Link them with `Fixes #123` only when the PR really resolves the issue.
-   Use `Refs #123` for partial work. Keep ownership and existing useful labels explicit.
-4. **Review and merge normally.** Required repository checks and human review rules
-   still apply. Record material trade-offs, validation environments and any deferred
-   acceptance. Planning never bypasses branch protection or security gates.
-5. **Validate delivery.** Keep the release-readiness issue open after feature PRs merge.
-   Check the exact candidate, required CI, native image scans, relevant real-environment
-   acceptance and upgrade/recovery behavior. Link the evidence, not just a checkbox.
-6. **Publish and verify.** Tag the reviewed candidate, publish release notes, and verify
-   the tag-triggered pipeline, versioned AMD64/ARM64 image and SBOM/provenance. Only then
-   close the readiness issue and milestone; move the outcome into completed history.
+1. **记录缘由。** 对于实质性工作，使用一个 issue 或经过评审的提案。
+   在实现之前写下用户问题、预期收益和验收标准。
+   小型缺陷/依赖 PR 无需重复创建 issue。
+2. **选择一个活动发布范围。** 创建一个版本里程碑，例如 `v2.5.0`，
+   并附上简短的目标和发布就绪 issue。提议的版本是可调整的。
+   除非维护者确实承诺，否则不要设置截止日期。
+3. **指派已接受的工作。** 将实现 issue 和相关 PR 挂接到该
+   里程碑。只有在 PR 确实解决问题时才用 `Fixes #123` 关联它们。
+   对部分完成的工作使用 `Refs #123`。让属主关系和现有的有用标签保持明确。
+4. **正常评审并合并。** 必需的仓库检查和人工评审规则
+   仍然适用。记录重要的权衡取舍、验证环境和任何推迟的
+   验收。规划绝不绕过分支保护或安全门禁。
+5. **验证交付。** 在功能 PR 合并后保持发布就绪 issue 打开。
+   检查确切的候选版本、必需的 CI、原生镜像扫描、相关的真实环境
+   验收以及升级/恢复行为。请链接证据，而不只是一个勾选框。
+6. **发布并验证。** 为经过评审的候选版本打 tag，发布发布说明，并验证
+   由 tag 触发的流水线、带版本号的 AMD64/ARM64 镜像和 SBOM/来源信息。只有到那时
+   才关闭就绪 issue 和里程碑；将成果移入已完成的历史。
 
-Milestone progress is a count of closed work items, not effort completed or proof that
-a version has shipped. A nearly complete milestone with a blocked release gate is still
-not a published release. Issues and PRs can both represent the same outcome, so do not
-interpret their combined count as distinct features delivered.
+里程碑进度是已关闭工作项的计数，而不是已完成的工作量，也不是
+某个版本已发布的证明。一个几乎完成但发布门禁被阻塞的里程碑
+仍然不是已发布的版本。Issue 和 PR 都可能代表同一个成果，因此不要
+将其合计数量理解为已交付的不同功能数。
 
-## Example: optional Warpgate support
+## 示例：可选的 Warpgate 支持
 
-[#237](https://github.com/zhengwuji/web-ssh/issues/237) states the user's gateway need.
-[#238](https://github.com/zhengwuji/web-ssh/pull/238) implements selector usernames,
-interactive authentication and a default-off administration gate. The request is closed
-and the PR merged, but neither belongs to v2.4.0 because the tag predates their merge.
+[#237](https://github.com/zhengwuji/web-ssh/issues/237) 陈述了用户的网关需求。
+[#238](https://github.com/zhengwuji/web-ssh/pull/238) 实现了选择器用户名、
+交互式身份验证和默认关闭的管理门禁。该请求已关闭，
+PR 也已合并，但两者都不属于 v2.4.0，因为该 tag 早于它们的合并时间。
 
-The published [v2.5.0 release](https://github.com/zhengwuji/web-ssh/releases/tag/v2.5.0) includes that implementation and the
-related workspace fixes. [#248](https://github.com/zhengwuji/web-ssh/issues/248) records
-the exact candidate, publication and image verification. The maintainer authorized
-publication with the reported deployment acceptance still unverified; those checks
-remain open in [#254](https://github.com/zhengwuji/web-ssh/issues/254). Publication and operational acceptance are
-recorded separately, without repeating implementation PRs or marking unrun checks passed.
+已发布的 [v2.5.0 版本](https://github.com/zhengwuji/web-ssh/releases/tag/v2.5.0) 包含了该实现和
+相关的工作区修复。[#248](https://github.com/zhengwuji/web-ssh/issues/248) 记录了
+确切的候选版本、发布和镜像验证。维护者在所报告的部署验收仍未验证的情况下
+授权了发布；这些检查仍留在 [#254](https://github.com/zhengwuji/web-ssh/issues/254) 中保持打开状态。发布和运维验收是
+分开记录的，既不重复实现 PR，也不把未运行的检查标记为已通过。
 
-## Record decisions and blockers
+## 记录决策和阻塞项
 
-Use a short dated comment on the relevant issue/PR:
+在相关的 issue/PR 上使用一条简短的带日期评论：
 
 ```text
 Decision (YYYY-MM-DD): selected/deferred/changed <scope>.
@@ -71,73 +70,73 @@ Blocker / next action: <exact dependency, owner and action>.
 Evidence: <issue/PR/test run/release link and exact SHA where applicable>.
 ```
 
-Do not make an unresolved bug disappear by removing its milestone. If work moves, record
-the old/new scope and reason. Security vulnerabilities still follow the private reporting
-process in [SECURITY.md](../SECURITY.md), not a new public planning issue.
+不要通过移除里程碑来让一个未解决的缺陷消失。如果工作发生转移，请记录
+旧/新的范围和理由。安全漏洞仍遵循 [SECURITY.md](../SECURITY.md) 中的私有报告
+流程，而不是创建一个新的公开规划 issue。
 
-## Release gate checklist
+## 发布门禁检查清单
 
-Use the focused [v2.5.0 readiness checklist](https://github.com/zhengwuji/web-ssh/issues/248)
-as the first example. Future checklists should include:
+请以聚焦的 [v2.5.0 就绪检查清单](https://github.com/zhengwuji/web-ssh/issues/248)
+作为首个示例。未来的检查清单应包含：
 
-- Confirmed scope/version and explicitly deferred items.
-- Final candidate SHA and required CI/review evidence.
-- Tests matching the changed risks; separate deployment-specific checks from automated CI.
-- Upgrade, backup/restore and rollback results or explicit supported limitations.
-- Current native AMD64/ARM64 scans and immutable source/image identity.
-- Release notes, tag/release links and final versioned-image/attestation verification.
+- 已确认的范围/版本和明确推迟的条目。
+- 最终候选 SHA 和必需的 CI/评审证据。
+- 与所变更风险相匹配的测试；将部署特定检查与自动化 CI 分开。
+- 升级、备份/恢复和回滚结果，或明确说明的受限之处。
+- 当前的 AMD64/ARM64 原生扫描和不可变源/镜像标识。
+- 发布说明、tag/发布链接和最终的带版本号镜像/认证验证。
 
-Do not close a release gate before publication or infer a final-head test from an earlier
-PR revision. An accepted operational limitation needs a maintainer decision; required
-CI/security gates cannot be silently waived. No automation or automatic merge is added.
+不要在发布之前关闭发布门禁，也不要从较早的 PR 修订版本推断最终头部的测试结果。
+被接受的运维限制需要维护者决策；必需的
+CI/安全门禁不能被悄然豁免。不添加任何自动化或自动合并。
 
-## Maintaining the history
+## 维护历史
 
-The initial [release-history manifest](release-history.json) is a dated, reviewable
-snapshot of ten published releases and the proposed next scope. It includes prepared
-native milestone descriptions, 161 merged PR mappings and 24 verified issue links.
-The original backfill result is retained in the manifest. Later releases extend the
-history; `candidate` is null when no next version has been selected.
+初始的 [发布历史清单](release-history.json) 是一份带日期、可评审的
+快照，包含十个已发布版本和提议的下一范围。它包含已准备好的
+原生里程碑描述、161 条已合并 PR 映射和 24 条经验证的 issue 链接。
+原始回填结果保留在清单中。后续发布扩展了
+历史；当尚未选定下一版本时，`candidate` 为 null。
 
-Applied on **2026-10-04**: ten historical milestones are closed and the proposed
-[v2.5.0 milestone](https://github.com/zhengwuji/web-ssh/milestone/11) was open at that time.
-The backfill assigned and verified 160 PRs, 24 implementation-linked issues and the
-open release gate #248 (185 items). PR #98 returned HTTP 404 through the API and
-signed-in browser and could not be assigned. The original 161-PR reconstruction
-is preserved; the manifest records the exception and native milestone numbers.
+应用于 **2026-10-04**：十个历史里程碑已关闭，提议的
+[v2.5.0 里程碑](https://github.com/zhengwuji/web-ssh/milestone/11) 在当时处于打开状态。
+回填指派并验证了 160 个 PR、24 个与实现关联的 issue 以及
+打开的发布门禁 #248（共 185 项）。PR #98 通过 API 和
+已登录浏览器均返回 HTTP 404，无法被指派。原始的 161-PR 重建
+被保留；清单记录了该例外和原生里程碑编号。
 
-Published on **2026-10-05**: v2.5.0 adds PRs #249-#252 to the original scope.
-The release milestone and #248 are closed after tag/image verification. The current
-manifest contains eleven releases and 165 merged PR mappings; deferred deployment
-acceptance remains open in #254. The original backfill counts above are not rewritten.
+发布于 **2026-10-05**：v2.5.0 在原始范围中增加了 PR #249-#252。
+发布里程碑和 #248 在 tag/镜像验证后关闭。当前
+清单包含十一个版本和 165 条已合并 PR 映射；推迟的部署
+验收仍在 #254 中保持打开。上述原始回填计数未被改写。
 
-For historical backfill:
+对于历史回填：
 
-1. Read all existing native milestones before creating anything; reuse matching versions
-   and preserve their descriptions/dates unless the maintainer explicitly approves edits.
-2. Use each release's first-tagged-inclusion mapping, not a merge date or a closed issue
-   timestamp. Do not attach unmerged/superseded PRs as delivered implementation.
-3. Assign historical work and close only milestones for actually published releases.
-   Put the true publication date in the description. Do not invent historical due dates
-   or rewrite commit, issue, PR or release metadata to make the plan look older.
-4. Keep the proposed next milestone open and include the release-readiness issue.
-   Verify every write, then update `native_milestone_backfill` in the snapshot with the
-   actual result/date and milestone numbers. Preserve unrelated existing assignments.
+1. 在创建任何内容之前，先读取所有现有的原生里程碑；复用匹配的版本，
+   并保留其描述/日期，除非维护者明确批准修改。
+2. 使用每个版本的首次被打 tag 收录映射，而不是合并日期或已关闭 issue
+   的时间戳。不要将未合并/已被取代的 PR 挂接为已交付的实现。
+3. 指派历史工作，并且只为实际已发布的版本关闭里程碑。
+   在描述中写入真实的发布日期。不要虚构历史截止日期，
+   也不要把提交、issue、PR 或发布元数据改写成让计划看起来更早。
+4. 保持提议的下一里程碑打开，并包含发布就绪 issue。
+   验证每一次写入，然后用实际结果/日期和里程碑编号更新快照中的
+   `native_milestone_backfill`。保留无关的现有指派。
 
-For future releases, append evidence and a released entry when publication is verified;
-retain historical tag membership. Update the roadmap's baseline/current section through
-a normal documentation PR. Check links and keep reasons concise rather than copying
-a commit-by-commit changelog.
+对于未来的发布，在验证发布后追加证据和一条已发布条目；
+保留历史上的 tag 成员关系。通过一次常规文档 PR 更新路线图的
+基线/当前部分。检查链接并保持理由简洁，而不是复制
+逐提交的变更日志。
 
-## Weekly review
+## 每周评审
 
-Read the latest release/tag comparison, recent merged/open PRs, open issues, the active
-milestone and its readiness issue. Report:
+阅读最新的版本/tag 对比、最近的已合并/打开的 PR、打开的 issue、活动
+里程碑及其就绪 issue。报告：
 
-- Meaningful user/security/operational changes, not every commit.
-- Implemented versus published outcomes.
-- Actual blockers, owner/action and evidence gaps.
-- At most three decisions or next actions; mark recommendations as recommendations.
+- 有意义的用户/安全/运维变更，而不是每一个提交。
+- 已实现与已发布的结果对比。
+- 实际的阻塞项、属主/行动和证据缺口。
+- 最多三项决策或后续行动；将建议标注为建议。
 
-This allows a weekly status report to describe roadmap progress from public evidence
-instead of guessing from the number of commits or closed tickets.
+这样，每周状态报告就能基于公开证据描述路线图进展，
+而不是从提交数量或已关闭工单数去猜测。
