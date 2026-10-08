@@ -40,8 +40,8 @@ PINNED_ACTIONS = {
         'v5',
     ),
     'anchore/sbom-action': (
-        '3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
-        'v0.24.2',
+        '66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c',
+        'v0.24.3',
     ),
     'aquasecurity/trivy-action': (
         'ed142fd0673e97e23eac54620cfb913e5ce36c25',
@@ -439,9 +439,9 @@ def test_graph_pages_toolchain_versions_are_explicit():
 
     assert re.search(r'with:\s*\n\s+version:\s*[\'"]?0\.12\.3', workflow)
     assert 'uv pip install --require-hashes -r requirements-graph.txt' in workflow
-    assert 'graphifyy==0.9.73' in graph_input
+    assert 'graphifyy==0.9.76' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.73' in graph_lock
+    assert 'graphifyy==0.9.76' in graph_lock
 
 
 def test_workflows_use_an_explicit_runner_release():
